@@ -12,7 +12,7 @@ export function assessPrint(mesh:ModelMesh,validation:MeshValidation,s:PrintSett
  for(let i=0;i<mesh.positions.length;i++){const a=i%3;min[a]=Math.min(min[a],mesh.positions[i]);max[a]=Math.max(max[a],mesh.positions[i]);}
  const size=max.map((v,i)=>v-min[i]);
  const fit=(size[0]+10<=s.bedX&&size[1]+10<=s.bedY)||(size[1]+10<=s.bedX&&size[0]+10<=s.bedY);
- const d=mesh.dimensions,p=mesh.params,worm='wormDimensions' in mesh?mesh.wormDimensions:null;
+ const d=mesh.dimensions,p=mesh.params,worm='wormDimensions' in mesh?mesh.wormDimensions:null,cycloidal='cycloidalDimensions' in mesh?mesh.cycloidalDimensions:null;
  const internal=p.kind==='internal'||p.kind==='internal-helical',rack=p.kind==='rack'||p.kind==='helical-rack';
  const wall=internal?(p.rimThickness??3*p.module):rack?(p.rackBaseHeight??3*p.module):(d.rootDiameter-p.bore)/2;
  const fmt=(n:number)=>n.toLocaleString('ru-RU',{maximumFractionDigits:2});
@@ -30,6 +30,9 @@ export function assessPrint(mesh:ModelMesh,validation:MeshValidation,s:PrintSett
    {id:'tip',label:'Вершина витка ZA',status:normalTip<2*s.lineWidth?'warning':'pass',detail:`Осевой размер ${fmt(worm.axialTipThickness)} мм; нормальная ширина на развёртке цилиндра вершин ${fmt(normalTip)} мм. Это не ширина дорожки в XY. Сравнение с двумя линиями (${fmt(2*s.lineWidth)} мм) — предварительный ориентир; проверьте траектории в слайсере.`},
    {id:'worm-layer',label:'Осевой размер и слой',status:worm.axialTipThickness<2*s.layer?'warning':'pass',detail:`На осевую вершину приходится ${fmt(worm.axialTipThickness/s.layer)} слоя при высоте ${fmt(s.layer)} мм. Менее двух слоёв — риск потери формы витка; это геометрический ориентир, не допуск изготовления.`},
   );
+ }else if(cycloidal){
+  const chord=d.tipDiameter*Math.sin(cycloidal.tipArcThickness/d.tipDiameter);
+  checks.push({id:'tip',label:'Вершина циклоидального зуба',status:chord<s.lineWidth?'fail':chord<2*s.lineWidth?'warning':'pass',detail:`Дуга ${fmt(cycloidal.tipArcThickness)} мм; хорда между боковинами ${fmt(chord)} мм в XY. Сравнение хорды с двумя линиями (${fmt(2*s.lineWidth)} мм) — предварительная оценка; проверьте периметры в слайсере.`});
  }else{
   checks.push({id:'tip',label:'Толщина вершины зуба',status:d.tipThickness<s.lineWidth?'fail':d.tipThickness<2*s.lineWidth?'warning':'pass',detail:`${fmt(d.tipThickness)} мм в поперечном сечении / ширина линии ${fmt(s.lineWidth)} мм. Ориентир — две линии; фактическое перекрытие периметров рассчитывает слайсер.`});
  }
@@ -40,7 +43,7 @@ export function assessPrint(mesh:ModelMesh,validation:MeshValidation,s:PrintSett
  if(worm)checks.push({id:'overhang',label:'Винтовые нависания и опоры',status:'warning',detail:'При вертикальной оси нижняя боковина каждого витка может требовать опор. Нужны послойный просмотр и пробная печать; следы опор на рабочих боковинах влияют на контакт с червячным колесом.'});
  else if(['helical','herringbone','internal-helical','helical-rack'].includes(p.kind))checks.push({id:'overhang',label:'Наклон и опоры',status:'warning',detail:'Проверьте нависания и прилегание первого слоя в слайсере. Следы опор на рабочих боковинах могут ухудшить зацепление.'});
  if(mesh.warnings.some(w=>w.code==='UNDERCUT'))checks.push({id:'undercut',label:'Подрезание зуба',status:'warning',detail:'Есть риск подрезания. Проверьте профиль и ответное колесо до изготовления.'});
- const limitations=mesh.warnings.filter(w=>w.code==='SIMPLIFIED_ROOT'||w.code==='INTERNAL_PAIR'||w.code==='WORM_SHARP_TRANSITIONS'||w.code==='WORM_PAIR_REQUIRED');
+ const limitations=mesh.warnings.filter(w=>w.code==='SIMPLIFIED_ROOT'||w.code==='INTERNAL_PAIR'||w.code==='WORM_SHARP_TRANSITIONS'||w.code==='WORM_PAIR_REQUIRED'||w.code==='CYCLOIDAL_TOOTH_SYSTEM'||w.code==='CYCLOIDAL_PAIR_REQUIRED');
  if(limitations.length)checks.push({id:'geometry',label:'Ограничения геометрии',status:'warning',detail:limitations.map(w=>w.message).join(' ')});
  return {status:checks.some(c=>c.status==='fail')?'fail':checks.some(c=>c.status==='warning')?'warning':'pass',size,checks,volumeMm3:validation.signedVolume,material:s.material,disclaimer:'Это геометрическая оценка пробной печати. Прочность, момент, ресурс, точность посадок и работа с ответной деталью не подтверждены.'};
 }

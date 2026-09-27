@@ -30,7 +30,7 @@ export function ExportDialog({ open, onOpenChange, params }: { open: boolean; on
     return () => { disposed = true; clearTimeout(timer); if (url) { const old = url; setTimeout(() => URL.revokeObjectURL(old), 60_000); } };
   }, [open, params]);
   return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="engineering-dialog export-dialog">
-    <DialogHeader><div className="dialog-kicker"><Download size={17} /> ЭКСПОРТ МОДЕЛИ</div><DialogTitle>STL для пробного изготовления</DialogTitle><DialogDescription>{modelNames[params.kind]} · {params.kind === 'worm' ? 'mₓ' : 'mₙ'} {params.module.toLocaleString('ru-RU')} мм</DialogDescription></DialogHeader>
+    <DialogHeader><div className="dialog-kicker"><Download size={17} /> ЭКСПОРТ МОДЕЛИ</div><DialogTitle>STL для пробного изготовления</DialogTitle><DialogDescription>{modelNames[params.kind]} · {params.kind === 'worm' ? 'mₓ' : params.kind === 'cycloidal' ? 'm' : 'mₙ'} {params.module.toLocaleString('ru-RU')} мм</DialogDescription></DialogHeader>
     <p>Размеры заданы в миллиметрах. Выберите эти единицы при импорте в слайсер.</p>
     {!prepared && !error && <p className="inline-status" role="status"><LoaderCircle className="spin-icon" size={17} /> Строим и проверяем сетку…</p>}
     {error && <p className="inline-error" role="alert">{error}</p>}

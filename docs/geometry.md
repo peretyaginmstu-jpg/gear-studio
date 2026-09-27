@@ -1,6 +1,6 @@
-# Gear mathematics kernel, 2026-09-27
+# Gear mathematics kernel v0.3, 2026-09-27
 
-For integration copy **both `gearMath.ts` and `generatedRoot.ts`**. No third-party runtime dependencies. Source geometry uses double-precision JS numbers; final positions use Float32Array for WebGL and STL.
+For the involute kernel copy **both `gearMath.ts` and `generatedRoot.ts`**. Application integration dispatches through `model.ts`, which also requires `wormGeometry.ts` and `cycloidalGeometry.ts`. No third-party runtime dependencies. Source geometry uses double-precision JS numbers; final positions use Float32Array for WebGL and STL.
 
 ## API
 
@@ -36,11 +36,11 @@ Rounded rack envelope is an explicit mathematical construction, adapted from the
 
 `profileTolerance` controls adaptive **2D** contour subdivision. Each segment is checked at 1/4, 1/2 and 3/4 parameter points; this is a measured sampling criterion, not a formal global Hausdorff guarantee. Default min(0.01mm, 0.005m). Root/involute positional joins are checked at max(1e−7mm,1e−7m); invalid joins fail. Numeric root diagnostics expose join error, tangent difference and sampled chord error. The helix is tessellated axially (at most 1.5 degrees per slice); no certified 3D error tolerance is claimed. STL is unitless by format convention; coordinates here are mm.
 
-Closed mesh verification does not establish pair interference, center distance, contact ratio, assembly, machining tolerance, load capacity, printer dimensional accuracy or service life. No bevel, worm wheel, cycloidal, hypoid or noncircular geometry is generated. ZA worm geometry is implemented separately in `wormGeometry.ts`; the UI dispatches through `model.ts`. Other unsupported families remain unavailable for STL.
+Closed mesh verification does not establish pair interference, center distance, contact ratio, assembly, machining tolerance, load capacity, printer dimensional accuracy or service life. No bevel, worm wheel, eccentric pin-reducer, hypoid or noncircular geometry is generated. ZA worm and cylindrical cycloidal geometry are implemented separately in `wormGeometry.ts` and `cycloidalGeometry.ts`; the UI dispatches through `model.ts`. Other unsupported families remain unavailable for STL.
 
 ## Verification
 
-Run `npm test` from the repository. Geometry tests include the original 23 checks plus internal-helical, helical-rack and ZA cases:
+Run `npm test` from the repository. Geometry tests include the original 23 checks plus internal-helical, helical-rack, ZA and cycloidal cases:
 
 - KHK numerical examples, normal/transverse conversions and signed profile-shift behavior.
 - Involute polar equation versus independent Cartesian unwinding-string equation.
@@ -63,3 +63,27 @@ Topology validation is not a general 3D triangle self-intersection detector. Pro
 Sources: [KHK §4.6](https://khkgears.net/new/gear_knowledge/gear_technical_reference/calculation_gear_dimensions.html) and [Litvin & Fuentes, cylindrical worm drives](https://www.cambridge.org/core/books/abs/gear-geometry-and-applied-theory/wormgear-drives-with-cylindrical-worms/2583169B30F6E4D894D605D56E05BBE7). Tests compare a published KHK example, axial section intersections, screw motion, independent integrated volume, both hands and 1/2/4/8 starts, and STL roundtrip.
 
 No tool fillets, runout, end chamfer, hub, conjugate worm wheel, pair contact or strength calculation. `baseDiameter` and `basePitch` compatibility fields are zero meaning **not applicable**, not an involute base circle. Printing checks use axial tip width and the normal width on the developed tip cylinder; a coarse layer or helical overhang still requires slicer inspection. Mesh topology and geometric print screening are separate from manufacturing acceptance.
+
+## Cylindrical cycloidal module
+
+`CycloidalParams = Omit<GearParams, 'kind'> & { kind: 'cycloidal'; cycloidRollingRadius?: number }`.
+`deriveCycloidal` and `buildCycloidalMesh` return distinct `cycloidalDimensions`; the mesh also carries `cycloidalDiagnostics`. Module is reference circular pitch / π; R = mz/2. One rolling-circle radius r generates both face and flank, default `min(2m, R/2)`. The selected height system is ha=m, hf=1.25m, explicitly an input assumption rather than a universal cycloidal standard. Reference tooth thickness is πm/2 − backlash; this is thinning of one wheel, not assembled backlash. Nonzero profile shift and helix angle are rejected. A constant involute pressure angle does not apply.
+
+For rolling-centre angle t, the Cartesian curves are:
+
+- Epicycloid: x=(R+r)cos(t)−r cos((R+r)t/r), y=(R+r)sin(t)−r sin((R+r)t/r).
+- Hypocycloid: x=(R−r)cos(t)+r cos((R−r)t/r), y=(R−r)sin(t)−r sin((R−r)t/r).
+
+Only the first radially monotone branches, 0≤Rt/r≤π, are used. The selected radius must satisfy 0<r≤R/2 and reach the root radius R−hf. Curves are cut at exact radial inversions, rotated by reference half thickness and mirrored. Tooth tips and gaps are circular arcs. Angular bounds reject pointed tips and overlap of adjacent roots. At r=R/2 the hypocycloid is the exact radial segment x=R cos(t), y=0. A conjugate counterpart requires compatible rolling circles and tooth heights; m and z alone cannot establish meshability. No mating contact or strength certificate is implied, and this is not a cycloidal pin reducer.
+
+Definitions checked against [Wolfram Epicycloid, equations 1–2](https://mathworld.wolfram.com/Epicycloid.html), [Wolfram Hypocycloid, equations 7–8 and radial special case](https://mathworld.wolfram.com/Hypocycloid.html), and the independent [FreeCAD Gears source](https://github.com/looooo/freecad.gears/blob/master/pygears/cycloid_tooth.py). Equations and implementation here were written independently; no FreeCAD runtime or code is included.
+
+Adaptive segments use the C² interpolation inequality `error ≤ max|f''| · Δt² / 8`. On these branches the second-derivative norm increases for the epicycloid and decreases for the hypocycloid, so the relevant endpoint gives its exact interval maximum. Circular arcs use their sagitta. Default tolerance is 0.002m; the accepted range is 1e-6 mm through 0.5m. The returned bound includes the bore contour. It describes the analytic 2D contour before Float32 conversion, not a certified 3D STL or manufacturing tolerance. Mesh budgets are 250,000 vertices / 500,000 triangles, with bounded subdivisions and a 4,096-point per-tooth triangulation budget. Lost Float32 faces are rejected.
+
+A separately sampled circular bore and one-tooth sector triangulation avoid zero-area caps when dedenda are radial. The template is replicated without duplicated seam vertices and extruded with flat caps. Tests compare independent Cartesian curves, pitch-circle thickness, reflection/rotation symmetry, the radial case, several bores, STL roundtrips, a scale/tooth-count matrix, and volume convergence against an independent analytic Green-theorem line integral.
+
+`GearDimensions` numeric compatibility fields use zero for unavailable involute-only quantities. User-facing v3 reports call `modelDimensionsForReport` and instead serialize pressure angles, base diameter/pitch and involute shift limits as `null`; use `cycloidalDimensions` for this family. The model passport does not inherit any pair approval from the separate pair dialog. The photo inverse solver explicitly excludes cycloidal teeth.
+
+## Separate pair report
+
+The UI's `PairDialog` uses `pairAnalysis.ts` for ideal unloaded involute external, internal and rack pairs. It reports the given two parts, actual or calculated operating distance, compatibility, backlash, radial clearance and contact ratios with stated restrictions. Its JSON is separate from the single-part passport. Unsupported worm and cycloidal pairs return an explicit unsupported status, never an involute substitute. See `pair-analysis.md` for equations and limits.

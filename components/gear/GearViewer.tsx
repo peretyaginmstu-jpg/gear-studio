@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { toCreasedNormals } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { RotateCcw, Plus, Minus, Move, Box, Maximize2 } from 'lucide-react';
+import { RotateCcw, Plus, Minus, Move, Box } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { isRackKind, type ModelMesh } from '@/lib/model';
 export function GearViewer({mesh, error, showDimensions, wireframe}:{mesh:ModelMesh|null;error:string|null;showDimensions:boolean;wireframe:boolean}){
@@ -31,6 +31,6 @@ export function GearViewer({mesh, error, showDimensions, wireframe}:{mesh:ModelM
  return <><div className="canvas-area"><div className="view-tabs"><Tabs value={is2d?'2d':'3d'} onValueChange={v=>{setWebglError(false);setView(v)}}><TabsList><TabsTrigger value="3d"><Box size={14}/>3D</TabsTrigger><TabsTrigger value="2d">Профиль</TabsTrigger></TabsList></Tabs></div>{!is2d&&<div className="webgl-host" ref={host}/>} {is2d&&mesh&&<svg className="profile-svg" viewBox={`${-bound} ${-bound} ${2*bound} ${2*bound}`} role="img" aria-label="Расчётный поперечный профиль в масштабе"><path d={path} fill="#d5a855" fillRule="evenodd" stroke="#8a652f" strokeWidth={bound/220}/>{showDimensions&&d&&!isRackKind(mesh.params.kind)&&<><circle r={d.pitchDiameter/2} fill="none" stroke="#6b7795" strokeWidth={bound/220} strokeDasharray={`${bound/18} ${bound/35}`}/><path d={`M${-bound*.86} 0 H${bound*.86} M0 ${-bound*.86} V${bound*.86}`} stroke="#9ea9b5" strokeWidth={bound/300} strokeDasharray={`${bound/25} ${bound/35}`}/></>}</svg>}
  {showDimensions&&d&&<div className="dimension-overlay"><span>{mesh&&isRackKind(mesh.params.kind)?'L':'⌀ da'} {format(mesh&&isRackKind(mesh.params.kind)?d.rackLength:d.tipDiameter)} мм</span><span>{mesh?.params.kind==='worm'?'L':'b'} {format(d.width)} мм</span></div>}
  {error&&<div className="model-error" role="alert"><strong>Проверьте параметры</strong><p>{error}</p></div>}
- <div className="view-label"><Move size={15}/>{is2d?'Поперечное сечение':'Вращайте мышью · масштаб колёсиком'}</div><div className="viewer-tools">{!is2d&&<><button aria-label="Приблизить" title="Приблизить" onClick={()=>sceneRef.current?.zoom(.82)}><Plus size={17}/></button><button aria-label="Отдалить" title="Отдалить" onClick={()=>sceneRef.current?.zoom(1.22)}><Minus size={17}/></button></>}<button aria-label="Сбросить вид" title="Сбросить вид" onClick={()=>sceneRef.current?.reset()}><RotateCcw size={17}/></button></div></div></>;
+ <div className="view-label"><Move size={15}/>{is2d?(mesh?.params.kind==='cycloidal'?'Эпициклоида + гипоциклоида':'Поперечное сечение'):'Вращайте мышью · масштаб колёсиком'}</div><div className="viewer-tools">{!is2d&&<><button aria-label="Приблизить" title="Приблизить" onClick={()=>sceneRef.current?.zoom(.82)}><Plus size={17}/></button><button aria-label="Отдалить" title="Отдалить" onClick={()=>sceneRef.current?.zoom(1.22)}><Minus size={17}/></button></>}<button aria-label="Сбросить вид" title="Сбросить вид" onClick={()=>sceneRef.current?.reset()}><RotateCcw size={17}/></button></div></div></>;
 }
 function format(n:number){return n.toLocaleString('ru-RU',{maximumFractionDigits:2})}
