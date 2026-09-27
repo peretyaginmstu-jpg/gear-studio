@@ -19,16 +19,8 @@ result.warnings;
 result.expertQuestions;         // массив {id,label,reason,options?}
 result.moduleMm;                // ВСЕГДА null
 
-const dimensions = deriveMeasuredSpurParameters({
-  toothCount: 24,
-  outsideDiameterMm: 52,
-  confirmedExternalSpur: true,
-  confirmedStandardFullDepth: true,
-  confirmedZeroProfileShift: true,
-  confirmedTipCircleDiameter: true,
-});
-// {ok:true,moduleMm:2,pitchDiameterMm:48,formula:'m = da / (z + 2)',warnings:[...]}
-// Если хотя бы одно подтверждение отсутствует: {ok:false,missing:[...]}
+// Для интерфейса v0.2 используйте inferGearFromMeasurements из photo-inference.ts.
+// deriveMeasuredSpurParameters остаётся legacy helper для частного случая.
 ```
 
 В UI подтверждения должны изначально быть сняты. `external_circular` нельзя автоматически трактовать как прямозубое эвольвентное колесо. Это только периодический наружный торцевой контур: он не исключает косозубое колесо, звёздочку, шлиц или произвольную деталь с регулярными выступами. Кольцо распознаётся по периодичности внутреннего контура и гладкой внешней границе. Для кольца `outsideDiameterPx` означает внешний диаметр тела кольца и не участвует в формуле внешнего прямозубого колеса. Линейная рейка — лишь кандидат, найденный по вытянутому силуэту с периодическими выступами с одной стороны; число зубьев и модуль ей не назначаются.
@@ -53,10 +45,10 @@ const dimensions = deriveMeasuredSpurParameters({
 ## Проверки
 
 ```sh
-node work/photo-analysis/photo-analysis.test.ts
+npm test
 ```
 
-Проверено на Node 24.18.0 (нативное выполнение TypeScript). Результаты сохранены в `test-results.json`. Это исполнение тестов, не отдельный TypeScript typecheck.
+Проверено на Node 24.18.0 (нативное выполнение TypeScript). TypeScript отдельно проверяется командой `npm run check`.
 
 - Подсчёт z = 8, 12, 20, 24, 40, 72; белая деталь на тёмном фоне; цветной фон; прозрачность.
 - Внутреннее кольцо с 40 зубьями и горизонтальная рейка.
@@ -79,3 +71,15 @@ node work/photo-analysis/photo-analysis.test.ts
 - [MathWorks, Structure from Motion from Two Views](https://www.mathworks.com/help/vision/ug/structure-from-motion-from-two-views.html) — даже реконструкция по двум калиброванным видам имеет неизвестный масштаб; в примере масштаб задаётся объектом известного размера.
 
 Это инженерная исследовательская заготовка для сайта; прошедшие синтетические тесты не подтверждают точность восстановления реальной детали по фото.
+
+## Обратный расчёт v0.2
+
+`inferGearFromMeasurements(input)` принимает только явно подтверждённые факты `{value, source}`. Источник — measurement, drawing или user_confirmation. Поддержаны spur, helical, herringbone, internal, internal-helical, rack, helical-rack. Силуэт предлагает гипотезы, но не подтверждает тип или эвольвентность.
+
+- Наружные: mn = da / [z/cosβ + 2(1+x)].
+- Внутренние: mn = da / [z/cosβ − 2(1−x)].
+- Рейка: mn = pt·cosβ / π; pt измеряется вдоль перемещения.
+
+Для круговых профилей отдельно требуются корректный диаметр окружности вершин, коэффициент смещения, ha*=1 и отсутствие укорочения вершин. Нечётное z не допускает необработанного размера между губками. Неизвестные α, β и x остаются вопросами; даже если модуль уже вычислен, полная модель не готова без оставшихся данных. Ширина и размеры тела вводятся отдельно, нулевой зазор/условная галтель остаются обозначенными предположениями модели.
+
+Статусы: missing, rejected, ready. Возвращаются `missingQuestions`, `issues`, `hypotheses`, `calculation`, `provenance`; готовый patch параметров существует только при ready. Паспорт из UI сохраняет подтверждённые источники и формулу. После ручного изменения параметров привязка к фото очищается. Загрузка другой фотографии очищает все прежние измерения. Проверки включают эталоны KHK, 7 семейств, отсутствие скрытых значений по умолчанию, численные границы и происхождение данных.

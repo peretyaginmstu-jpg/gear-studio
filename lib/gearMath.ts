@@ -5,7 +5,7 @@ import type {RootDiagnostics} from './generatedRoot.ts';
  * Analytic flanks and rounded-rack generated external roots; simplified internal roots.
  * A valid closed mesh is not an ISO/JIS precision grade or a strength/meshability certificate.
  */
-export type GearKind = 'spur' | 'helical' | 'herringbone' | 'internal' | 'rack';
+export type GearKind = 'spur' | 'helical' | 'herringbone' | 'internal' | 'internal-helical' | 'rack' | 'helical-rack';
 export interface GearParams {
   kind: GearKind;
   teeth: number;
@@ -13,7 +13,7 @@ export interface GearParams {
   module: number;
   /** Normal pressure angle alpha_n in degrees. */
   pressureAngleDeg: number;
-  /** Signed helix angle at the reference cylinder; ignored for spur/internal/rack. */
+  /** Signed helix angle at the reference cylinder or rack pitch plane; ignored for straight teeth. */
   helixAngleDeg: number;
   width: number;
   /** Shaft hole diameter; only for external circular gears. */
@@ -57,6 +57,8 @@ export interface GearDimensions {
   twistAngleDeg: number;
   rackLength: number;
   rackHeight: number;
+  /** Signed x offset between rack end faces, width * tan(beta); zero for circular gears. */
+  rackAxialOffset: number;
 }
 export interface GearDerived { params: GearParams; dimensions: GearDimensions; warnings: GearWarning[] }
 export interface Point2 { x: number; y: number }
@@ -94,7 +96,7 @@ export const defaultGearParams: GearParams = {
 };
 export function deriveGear(input: GearParams): GearDerived {
   const p = { ...input };
-  if (!['spur','helical','herringbone','internal','rack'].includes(p.kind))
+  if (!['spur','helical','herringbone','internal','internal-helical','rack','helical-rack'].includes(p.kind))
     fail('UNSUPPORTED_KIND', 'Конические, червячные и циклоидальные передачи требуют отдельных математических ядер.');
   for (const key of ['teeth','module','pressureAngleDeg','helixAngleDeg','width','bore','profileShift','backlash'] as const) {
     if (typeof p[key] !== 'number' || !Number.isFinite(p[key])) fail('NON_FINITE', `Параметр ${key} должен быть конечным числом.`);
@@ -103,7 +105,9 @@ export function deriveGear(input: GearParams): GearDerived {
     if (key !== 'kind' && value !== undefined && (typeof value !== 'number' || !Number.isFinite(value)))
       fail('NON_FINITE', `Параметр ${key} должен быть конечным числом.`);
   }
-  if (!Number.isInteger(p.teeth) || p.teeth < (p.kind === 'rack' ? 1 : 6) || p.teeth > 250)
+  const internal = p.kind === 'internal' || p.kind === 'internal-helical';
+  const rack = p.kind === 'rack' || p.kind === 'helical-rack';
+  if (!Number.isInteger(p.teeth) || p.teeth < (rack ? 1 : 6) || p.teeth > 250)
     fail('TEETH_RANGE', 'Число зубьев должно быть целым: 6–250 для колеса, 1–250 для рейки.');
   if (!(p.module >= 0.1 && p.module <= 30)) fail('MODULE_RANGE', 'Нормальный модуль должен быть от 0,1 до 30 мм.');
   if (!(p.width > 0 && p.width <= 500)) fail('WIDTH_RANGE', 'Ширина должна быть больше 0 и не больше 500 мм.');
@@ -111,13 +115,12 @@ export function deriveGear(input: GearParams): GearDerived {
   if (!(p.profileShift >= -0.8 && p.profileShift <= 1)) fail('SHIFT_RANGE', 'Коэффициент смещения должен быть от −0,8 до +1.');
   if (!(p.backlash >= 0)) fail('BACKLASH_RANGE', 'Уменьшение толщины зуба не может быть отрицательным.');
   if (!(p.bore >= 0)) fail('BORE_RANGE', 'Диаметр отверстия не может быть отрицательным.');
-  const helical = p.kind === 'helical' || p.kind === 'herringbone';
+  const helical = p.kind === 'helical' || p.kind === 'herringbone' || p.kind === 'internal-helical' || p.kind === 'helical-rack';
   if (helical && Math.abs(p.helixAngleDeg) > 45) fail('HELIX_RANGE', 'Модуль поддерживает угол наклона зубьев до 45°.');
   const beta = helical ? p.helixAngleDeg * DEG : 0;
   const an = p.pressureAngleDeg * DEG, cb = Math.cos(beta), mn = p.module;
   const mt = mn / cb, at = Math.atan(Math.tan(an) / cb);
   const d = p.teeth * mt, rb = d / 2 * Math.cos(at);
-  const internal = p.kind === 'internal', rack = p.kind === 'rack';
   const sn = mn * (PI / 2 + (internal ? -2 : 2) * p.profileShift * Math.tan(an)) - p.backlash;
   const st = sn / cb, pt = PI * mt;
   if (!(sn > 0.05 * mn && st < pt - 0.05 * mn)) fail('TOOTH_THICKNESS', 'Смещение и зазор дают недопустимую толщину зуба.');
@@ -141,8 +144,10 @@ export function deriveGear(input: GearParams): GearDerived {
   if (rack && !(baseHeight > 0)) fail('RACK_BASE', 'Высота основания рейки должна быть положительной.');
   let tipThickness = 0;
   if (rack) {
-    tipThickness = st - 2 * ha * Math.tan(an);
-    if (tipThickness <= 0.02 * mn || st + 2 * hf * Math.tan(an) >= pt)
+    // KHK normal-system helical rack: x_t = x_n / cos(beta), y_t = y_n.
+    // Its straight flanks therefore use alpha_t, not alpha_n, in a transverse section.
+    tipThickness = st - 2 * ha * Math.tan(at);
+    if (tipThickness <= 0.02 * mn || st + 2 * hf * Math.tan(at) >= pt)
       fail('RACK_INTERSECTION', 'При этих параметрах вершины или впадины зубьев рейки пересекаются.');
   } else {
     const half = internal
@@ -168,6 +173,7 @@ export function deriveGear(input: GearParams): GearDerived {
     addendum:ha, dedendum:hf, width:p.width, minimumProfileShift:xmin, virtualTeeth:zv,
     twistAngleDeg:rack?0:p.width*Math.tan(beta)/(d/2)/DEG,
     rackLength:rack?pt*p.teeth:0, rackHeight:rack?ha+hf+baseHeight:0,
+    rackAxialOffset:rack?p.width*Math.tan(beta):0,
   };
   return { params:p, dimensions, warnings };
 }
@@ -204,11 +210,11 @@ export function buildGearProfile(p:GearParams, flankSamples=12):GearProfile {
   const derived=deriveGear(p), d=derived.dimensions;
   const samples=Math.max(5,Math.min(64,Math.round(flankSamples)));
   if(!Number.isFinite(flankSamples)) fail('QUALITY_RANGE','Качество сетки должно быть конечным числом.');
-  if(p.kind==='rack') {
+  if(p.kind==='rack'||p.kind==='helical-rack') {
     const pitch=d.transverseCircularPitch, root=-d.dedendum, top=d.addendum;
     const bottom=root-(p.rackBaseHeight??3*p.module), length=d.rackLength;
     const halfTip=d.tipThickness/2;
-    const halfRoot=d.transverseToothThickness/2+d.dedendum*Math.tan(p.pressureAngleDeg*DEG);
+    const halfRoot=d.transverseToothThickness/2+d.dedendum*Math.tan(d.transversePressureAngleDeg*DEG);
     const chain:Point2[]=[{x:-length/2,y:root}];
     for(let k=0;k<p.teeth;k++) {
       const c=-length/2+(k+.5)*pitch;
@@ -217,7 +223,7 @@ export function buildGearProfile(p:GearParams, flankSamples=12):GearProfile {
     chain.push({x:length/2,y:root},{x:length/2,y:bottom},{x:-length/2,y:bottom});
     return {...derived,outer:chain.reverse(),hole:null};
   }
-  const r=d.pitchDiameter/2, rb=d.baseDiameter/2, internal=p.kind==='internal';
+  const r=d.pitchDiameter/2, rb=d.baseDiameter/2, internal=p.kind==='internal'||p.kind==='internal-helical';
   const generated = internal ? null : generatedExternalOutline(p,d,samples);
   const outline=generated?.outline ?? involuteOutline(p.teeth,r,rb,d.tipDiameter/2,d.rootDiameter/2,
     d.transverseCircularPitch-d.transverseToothThickness,samples);
@@ -258,7 +264,8 @@ export function buildGearMesh(params:GearParams, quality:MeshQuality={}):GearMes
   const flankSamples=Math.max(5,Math.min(64,Math.round(quality.flankSamples??12)));
   const profile=buildGearProfile(params,flankSamples),{outer,hole,dimensions:d}=profile;
   if(signedArea(outer)<=0 || (hole&&signedArea(hole)<=0))fail('WINDING','Некорректная ориентация контура.');
-  const helical=params.kind==='helical'||params.kind==='herringbone';
+  const rack=params.kind==='rack'||params.kind==='helical-rack';
+  const helical=params.kind==='helical'||params.kind==='herringbone'||params.kind==='internal-helical';
   const twist=d.twistAngleDeg*DEG;
   let axialSegments=helical?Math.max(8,Math.ceil(Math.abs(d.twistAngleDeg)/1.5)):1;
   if(quality.axialSegments!==undefined) {
@@ -268,8 +275,8 @@ export function buildGearMesh(params:GearParams, quality:MeshQuality={}):GearMes
   if(params.kind==='herringbone'&&axialSegments%2)axialSegments++;
   if(axialSegments>256)fail('EXCESSIVE_TWIST','Для такой ширины и наклона требуется слишком много сечений. Уменьшите ширину или наклон.');
   const ringCount=outer.length+(hole?.length??0);
-  const estimatedVertices=(axialSegments+1)*ringCount+(!hole&&params.kind!=='rack'?2:0);
-  const estimatedTriangles=2*axialSegments*ringCount+(hole?4*outer.length:params.kind==='rack'?2*(outer.length-2):2*outer.length);
+  const estimatedVertices=(axialSegments+1)*ringCount+(!hole&&!rack?2:0);
+  const estimatedTriangles=2*axialSegments*ringCount+(hole?4*outer.length:rack?2*(outer.length-2):2*outer.length);
   if(estimatedVertices>250_000||estimatedTriangles>500_000)
     fail('MESH_BUDGET','Слишком сложная сетка для браузера. Уменьшите ширину, число зубьев или качество дискретизации.');
   const positions:number[]=[], indices:number[]=[];
@@ -280,7 +287,10 @@ export function buildGearMesh(params:GearParams, quality:MeshQuality={}):GearMes
     // Positive beta: angle increases with +z. For herringbone it reverses at z=0.
     const phase=helical?(params.kind==='herringbone'?twist*(.5-Math.abs(t-.5)):twist*(t-.5)):0;
     const co=Math.cos(phase),si=Math.sin(phase),z=(t-.5)*params.width;
-    for(const loop of [outer,...(hole?[hole]:[])]) for(const p of loop)vertex(p.x*co-p.y*si,p.x*si+p.y*co,z);
+    // A rack tooth is a plane u = x*cos(beta) - z*sin(beta) = constant.
+    // Linear skew is exact with one axial segment; rotating rack sections would be wrong.
+    const rackOffset=rack?d.rackAxialOffset*(t-.5):0;
+    for(const loop of [outer,...(hole?[hole]:[])]) for(const p of loop)vertex(p.x*co-p.y*si+rackOffset,p.x*si+p.y*co,z);
   }
   for(let k=0;k<axialSegments;k++) {
     const low=k*ringCount,high=(k+1)*ringCount;
@@ -298,7 +308,7 @@ export function buildGearMesh(params:GearParams, quality:MeshQuality={}):GearMes
       face(top+j,top+next,top+inner+next);face(top+j,top+inner+next,top+inner+j);
       face(j,inner+next,next);face(j,inner+j,inner+next);
     }
-  } else if(params.kind==='rack') {
+  } else if(rack) {
     const cap=triangulatePolygon(outer);
     for(let k=0;k<cap.length;k+=3){const[a,b,c]=cap.slice(k,k+3);face(top+a,top+b,top+c);face(a,c,b);}
   } else {
@@ -328,11 +338,11 @@ export function validateMesh(mesh:Pick<GearMesh,'positions'|'indices'>):MeshVali
     boundaryEdges,nonManifoldEdges,inconsistentEdges,degenerateTriangles,signedVolume:volume,triangles:f.length/3,vertices:p.length/3};
 }
 /** Binary STL in millimetres (STL itself is unitless). Throws if topology validation fails. */
-export function exportBinarySTL(mesh:GearMesh):ArrayBuffer {
+export function exportBinarySTL(mesh:Pick<GearMesh,'positions'|'indices'>):ArrayBuffer {
   const check=validateMesh(mesh);
   if(!check.valid)fail('INVALID_MESH','Экспорт запрещён: сетка не прошла проверку замкнутости и ориентации.');
   const buffer=new ArrayBuffer(84+check.triangles*50),view=new DataView(buffer);
-  const header='Involute flanks; explicit-tool external roots; units mm; verify mating and load';
+  const header='Zatseplenie; units mm; see model passport; verify mating and load';
   for(let i=0;i<header.length;i++)view.setUint8(i,header.charCodeAt(i));
   view.setUint32(80,check.triangles,true);
   const p=mesh.positions,f=mesh.indices;

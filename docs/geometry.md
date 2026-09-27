@@ -18,8 +18,8 @@ Units are mm. Module and pressure angle are **normal** for helical/herringbone. 
 ## Geometry delivered
 
 - External spur, helical and herringbone: analytic involute working flanks plus the secondary envelope of an explicitly specified rounded rack cutter. The cutter-tip circle in the normal plane projects to a transverse ellipse for helical gears. Default tool tip radius is 0.3m; this is an **assumed input tool**, not a recovered or universally standardized radius. `toolTipRadiusCoefficient` can specify it.
-- Internal spur: complete analytic involute flanks from tooth tip to root; sharp intersection with the root circle. A generating-pinion root fillet is not included. Below-base-circle internal tips are rejected.
-- Rack: straight-flank trapezoidal teeth with exact pressure angle and flat tip/root; sharp roots. Profile shift changes the reference-line datum.
+- Internal spur and helical: complete analytic involute flanks from tooth tip to root; sharp intersection with the root circle. A generating-pinion root fillet is not included. Below-base-circle internal tips are rejected.
+- Straight and helical rack: straight-flank trapezoidal teeth with exact pressure angle and flat tip/root; sharp roots. Profile shift changes the reference-line datum. The helical rack uses the transverse pressure angle and linear sweep x(z)=x₀+z·tanβ; rackAxialOffset=b·tanβ and its bounding length includes this skew.
 - Herringbone: opposite swept helices share one middle section, so the result is a single watertight shell. No middle relief groove.
 
 The generated external root checks positional joining, tangent joining and radial monotonicity. Parameters requiring trimmed undercut loops are **rejected**, not exported with a decorative replacement. The undercut warning in `deriveGear` is only a preliminary virtual-spur screen. Actual root generation performs stronger geometric checks.
@@ -36,11 +36,11 @@ Rounded rack envelope is an explicit mathematical construction, adapted from the
 
 `profileTolerance` controls adaptive **2D** contour subdivision. Each segment is checked at 1/4, 1/2 and 3/4 parameter points; this is a measured sampling criterion, not a formal global Hausdorff guarantee. Default min(0.01mm, 0.005m). Root/involute positional joins are checked at max(1e−7mm,1e−7m); invalid joins fail. Numeric root diagnostics expose join error, tangent difference and sampled chord error. The helix is tessellated axially (at most 1.5 degrees per slice); no certified 3D error tolerance is claimed. STL is unitless by format convention; coordinates here are mm.
 
-Closed mesh verification does not establish pair interference, center distance, contact ratio, assembly, machining tolerance, load capacity, printer dimensional accuracy or service life. No bevel, worm wheel, cycloidal, hypoid or noncircular geometry is generated. A ZA worm is also not implemented in this module. These families must remain unavailable for exact export until their own kernels exist.
+Closed mesh verification does not establish pair interference, center distance, contact ratio, assembly, machining tolerance, load capacity, printer dimensional accuracy or service life. No bevel, worm wheel, cycloidal, hypoid or noncircular geometry is generated. ZA worm geometry is implemented separately in `wormGeometry.ts`; the UI dispatches through `model.ts`. Other unsupported families remain unavailable for STL.
 
 ## Verification
 
-Run `node --experimental-strip-types --test work/gear-math/gearMath.test.ts` from the chat directory. **23 tests pass**:
+Run `npm test` from the repository. Geometry tests include the original 23 checks plus internal-helical, helical-rack and ZA cases:
 
 - KHK numerical examples, normal/transverse conversions and signed profile-shift behavior.
 - Involute polar equation versus independent Cartesian unwinding-string equation.
@@ -55,3 +55,11 @@ Run `node --experimental-strip-types --test work/gear-math/gearMath.test.ts` fro
 - Representative 60-combination parameter matrix: valid models pass topology, unsupported parameter combinations are rejected.
 
 Topology validation is not a general 3D triangle self-intersection detector. Profiles are checked/constructed as monotone noncrossing contours; external root loops are rejected. Physical printing and mating tests remain unperformed.
+
+## ZA worm module
+
+`module` is **axial** mx, `pressureAngleDeg` is axial αx, `width` is threaded length. `wormStarts`, `wormDiameterFactor` and `wormHand` control the helix; inherited `teeth` and `helixAngleDeg` do not. `deriveWorm` returns a separate `wormDimensions` object. d=q·mx, lead=π·mx·starts, γ=atan(starts/q), mn=mx·cosγ, tanαn=tanαx·cosγ. The axial generating section has straight flanks and flat tip/root lands. The model uses ha=mx and hf=1.25mx; nonzero profile shift is rejected.
+
+Sources: [KHK §4.6](https://khkgears.net/new/gear_knowledge/gear_technical_reference/calculation_gear_dimensions.html) and [Litvin & Fuentes, cylindrical worm drives](https://www.cambridge.org/core/books/abs/gear-geometry-and-applied-theory/wormgear-drives-with-cylindrical-worms/2583169B30F6E4D894D605D56E05BBE7). Tests compare a published KHK example, axial section intersections, screw motion, independent integrated volume, both hands and 1/2/4/8 starts, and STL roundtrip.
+
+No tool fillets, runout, end chamfer, hub, conjugate worm wheel, pair contact or strength calculation. `baseDiameter` and `basePitch` compatibility fields are zero meaning **not applicable**, not an involute base circle. Printing checks use axial tip width and the normal width on the developed tip cylinder; a coarse layer or helical overhang still requires slicer inspection. Mesh topology and geometric print screening are separate from manufacturing acceptance.
