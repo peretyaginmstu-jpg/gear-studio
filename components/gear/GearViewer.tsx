@@ -4,33 +4,104 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { toCreasedNormals } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { RotateCcw, Plus, Minus, Move, Box } from 'lucide-react';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { RotateCcw, Plus, Minus, Move, Box, Waves, CircleDot, PanelTop, Ruler, Grid2X2 } from 'lucide-react';
 import { isRackKind, type ModelMesh } from '@/lib/model';
-export function GearViewer({mesh, error, showDimensions, wireframe}:{mesh:ModelMesh|null;error:string|null;showDimensions:boolean;wireframe:boolean}){
- const host=useRef<HTMLDivElement>(null); const sceneRef=useRef<{reset:()=>void;zoom:(n:number)=>void}|null>(null); const [view,setView]=useState('3d'); const [webglError,setWebglError]=useState(false);
- useEffect(()=>{if(!host.current||!mesh||view!=='3d')return;let renderer:THREE.WebGLRenderer;try{renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});}catch{const fallback=requestAnimationFrame(()=>setWebglError(true));return()=>cancelAnimationFrame(fallback);}
- const mount=host.current;renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));renderer.setClearColor(0x000000,0);renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.0;mount.appendChild(renderer.domElement);renderer.domElement.setAttribute('aria-label','Интерактивная 3D-модель зубчатого колеса');renderer.domElement.setAttribute('role','img');
- const scene=new THREE.Scene(),camera=new THREE.PerspectiveCamera(31,1,.1,10000);camera.up.set(0,0,1);
- const pmrem=new THREE.PMREMGenerator(renderer);const environmentScene=new RoomEnvironment();const env=pmrem.fromScene(environmentScene,.04);scene.environment=env.texture;
- const rawGeometry=new THREE.BufferGeometry();rawGeometry.setAttribute('position',new THREE.BufferAttribute(mesh.positions,3));rawGeometry.setIndex(new THREE.BufferAttribute(mesh.indices,1));const geometry=toCreasedNormals(rawGeometry,Math.PI/5);rawGeometry.dispose();geometry.computeBoundingSphere();geometry.computeBoundingBox();
- const material=new THREE.MeshStandardMaterial({color:0xb9965c,metalness:.72,roughness:.36,wireframe});const model=new THREE.Mesh(geometry,material);scene.add(model);
- const edgesGeometry=mesh.indices.length/3<=100000?new THREE.EdgesGeometry(geometry,38):new THREE.BufferGeometry();const edgesMaterial=new THREE.LineBasicMaterial({color:0x72521f,transparent:true,opacity:.12});const edges=new THREE.LineSegments(edgesGeometry,edgesMaterial);scene.add(edges);
- const r=geometry.boundingSphere?.radius||30;camera.near=Math.max(r/1000,1e-5);camera.far=r*16;camera.updateProjectionMatrix();const light=new THREE.DirectionalLight(0xffffff,2.2);light.position.set(-r,-r,r*4);scene.add(light);
- const rim=new THREE.DirectionalLight(0xd6e7ff,1.8);rim.position.set(r,r,r);scene.add(rim);
- const grid=new THREE.GridHelper(r*4,20,0xabb5c2,0xdce2e9);grid.rotation.x=Math.PI/2;grid.position.z=(geometry.boundingBox?.min.z??0)-.15;const gridMat=grid.material as THREE.Material;gridMat.transparent=true;gridMat.opacity=.28;scene.add(grid);
- const controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=true;controls.dampingFactor=.075;controls.minDistance=r*1.3;controls.maxDistance=r*12;controls.target.copy(geometry.boundingSphere?.center??new THREE.Vector3());
- const reset=()=>{controls.target.copy(geometry.boundingSphere?.center??new THREE.Vector3());camera.position.copy(controls.target).add(new THREE.Vector3(r*2.2,-r*3.2,r*3.6));controls.update();};reset();sceneRef.current={reset,zoom:(n)=>{camera.position.sub(controls.target).multiplyScalar(n).add(controls.target);controls.update();}};
- const size=()=>{if(mount.clientWidth&&mount.clientHeight){renderer.setSize(mount.clientWidth,mount.clientHeight);camera.aspect=mount.clientWidth/mount.clientHeight;camera.updateProjectionMatrix();}};const observer=new ResizeObserver(size);observer.observe(mount);size();
- let frame=0;const render=()=>{controls.update();renderer.render(scene,camera);frame=requestAnimationFrame(render)};render();
- return()=>{cancelAnimationFrame(frame);observer.disconnect();controls.dispose();geometry.dispose();material.dispose();edgesGeometry.dispose();edgesMaterial.dispose();grid.geometry.dispose();gridMat.dispose();environmentScene.dispose();env.dispose();pmrem.dispose();renderer.dispose();renderer.domElement.remove();sceneRef.current=null;};
- },[mesh,view,wireframe]);
- const d=mesh?.dimensions,bevel=mesh&&'bevelDimensions' in mesh?mesh.bevelDimensions:null; const bound=mesh?mesh.profile.outer.reduce((r,p)=>Math.max(r,Math.abs(p.x),Math.abs(p.y)),0)*1.36:40;
- const path=mesh?[mesh.profile.outer,...(mesh.profile.hole?[mesh.profile.hole]:[])].map(loop=>'M'+loop.map(p=>`${p.x},${-p.y}`).join('L')+'Z').join(' '):'';
- const is2d=view==='2d'||webglError;
- return <><div className="canvas-area"><div className="view-tabs"><Tabs value={is2d?'2d':'3d'} onValueChange={v=>{setWebglError(false);setView(v)}}><TabsList><TabsTrigger value="3d"><Box size={14}/>3D</TabsTrigger><TabsTrigger value="2d">{bevel?'Проекция':'Профиль'}</TabsTrigger></TabsList></Tabs></div>{!is2d&&<div className="webgl-host" ref={host}/>} {is2d&&mesh&&<svg className="profile-svg" viewBox={`${-bound} ${-bound} ${2*bound} ${2*bound}`} role="img" aria-label={bevel?'XY-проекция пространственного большого контура':'Расчётный поперечный профиль в масштабе'}><path d={path} fill="#d5a855" fillRule="evenodd" stroke="#8a652f" strokeWidth={bound/220}/>{showDimensions&&d&&!isRackKind(mesh.params.kind)&&<><circle r={d.pitchDiameter/2} fill="none" stroke="#6b7795" strokeWidth={bound/220} strokeDasharray={`${bound/18} ${bound/35}`}/><path d={`M${-bound*.86} 0 H${bound*.86} M0 ${-bound*.86} V${bound*.86}`} stroke="#9ea9b5" strokeWidth={bound/300} strokeDasharray={`${bound/25} ${bound/35}`}/></>}</svg>}
- {showDimensions&&d&&<div className="dimension-overlay"><span>{mesh&&isRackKind(mesh.params.kind)?'L':'⌀ da'} {format(mesh&&isRackKind(mesh.params.kind)?d.rackLength:d.tipDiameter)} мм</span><span>{bevel?'H по оси':mesh?.params.kind==='worm'?'L':'b'} {format(bevel?.axialExtent??d.width)} мм</span></div>}
- {error&&<div className="model-error" role="alert"><strong>Проверьте параметры</strong><p>{error}</p></div>}
- <div className="view-label"><Move size={15}/>{is2d?(bevel?'XY-проекция большого контура':mesh?.params.kind==='cycloidal'?'Эпициклоида + гипоциклоида':'Поперечное сечение'):'Вращайте мышью · масштаб колёсиком'}</div><div className="viewer-tools">{!is2d&&<><button aria-label="Приблизить" title="Приблизить" onClick={()=>sceneRef.current?.zoom(.82)}><Plus size={17}/></button><button aria-label="Отдалить" title="Отдалить" onClick={()=>sceneRef.current?.zoom(1.22)}><Minus size={17}/></button></>}<button aria-label="Сбросить вид" title="Сбросить вид" onClick={()=>sceneRef.current?.reset()}><RotateCcw size={17}/></button></div></div></>;
+
+type View = '3d' | '2d' | 'top' | 'side';
+export function GearViewer({ mesh, error }: { mesh: ModelMesh | null; error: string | null }) {
+  const host = useRef<HTMLDivElement>(null), sceneRef = useRef<{ reset: () => void; zoom: (n: number) => void } | null>(null);
+  const [view, setView] = useState<View>('3d'), [webglError, setWebglError] = useState(false);
+  const [showDimensions, setShowDimensions] = useState(false), [wireframe, setWireframe] = useState(false);
+  useEffect(() => {
+    if (!host.current || !mesh || view === '2d' || webglError) return;
+    let renderer: THREE.WebGLRenderer;
+    try { renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true }); }
+    catch { const fallback = requestAnimationFrame(() => setWebglError(true)); return () => cancelAnimationFrame(fallback); }
+    const mount = host.current;
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); renderer.setClearColor(0x000000, 0);
+    renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1;
+    renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.VSMShadowMap;
+    mount.appendChild(renderer.domElement);
+    renderer.domElement.setAttribute('aria-label', 'Интерактивная 3D-модель зубчатого колеса'); renderer.domElement.setAttribute('role', 'img');
+    const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(31, 1, .1, 10000);
+    // OrbitControls caches the up-axis when it is created.
+    camera.up.set(0, view === 'top' ? 1 : 0, view === 'top' ? 0 : 1);
+    const pmrem = new THREE.PMREMGenerator(renderer), environmentScene = new RoomEnvironment(), env = pmrem.fromScene(environmentScene, .04);
+    scene.environment = env.texture;
+    const raw = new THREE.BufferGeometry(); raw.setAttribute('position', new THREE.BufferAttribute(mesh.positions, 3)); raw.setIndex(new THREE.BufferAttribute(mesh.indices, 1));
+    const geometry = toCreasedNormals(raw, Math.PI / 5); raw.dispose(); geometry.computeBoundingSphere(); geometry.computeBoundingBox();
+    const material = new THREE.MeshStandardMaterial({ color: 0xb9965c, metalness: .72, roughness: .36, wireframe });
+    const model = new THREE.Mesh(geometry, material); model.castShadow = true; model.receiveShadow = true; scene.add(model);
+    const r = geometry.boundingSphere?.radius || 30, centre = geometry.boundingSphere?.center ?? new THREE.Vector3();
+    camera.near = Math.max(r / 1000, 1e-5); camera.far = r * 16; camera.updateProjectionMatrix();
+    const light = new THREE.DirectionalLight(0xffffff, 1.8); light.position.copy(centre).add(new THREE.Vector3(-r, -r, r * 5)); light.target.position.copy(centre);
+    light.castShadow = true; light.shadow.mapSize.set(512, 512); light.shadow.camera.left = -r * 1.5; light.shadow.camera.right = r * 1.5;
+    light.shadow.camera.top = r * 1.5; light.shadow.camera.bottom = -r * 1.5; light.shadow.camera.near = r / 100; light.shadow.camera.far = r * 8;
+    light.shadow.bias = -.0002; light.shadow.normalBias = r * .002; light.shadow.radius = 5; light.shadow.blurSamples = 8; scene.add(light, light.target);
+    const fill = new THREE.DirectionalLight(0xe5ecff, .8); fill.position.copy(centre).add(new THREE.Vector3(r * 2, r, r * 2)); scene.add(fill);
+    scene.add(new THREE.AmbientLight(0xffffff, .15));
+    const floorGeometry = new THREE.PlaneGeometry(r * 8, r * 8), floorMaterial = new THREE.ShadowMaterial({ opacity: .14 });
+    // VSM also draws shadow receivers into its depth pass. Keep this transparent
+    // catcher out of that pass so its own depth cannot reveal the shadow frustum.
+    const floorDepthMaterial = new THREE.MeshDepthMaterial({ colorWrite: false, depthWrite: false });
+    const floor = new THREE.Mesh(floorGeometry, floorMaterial); floor.customDepthMaterial = floorDepthMaterial;
+    floor.position.set(centre.x, centre.y, (geometry.boundingBox?.min.z ?? 0) - r * .005); floor.receiveShadow = true; scene.add(floor);
+    const controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = true; controls.dampingFactor = .075;
+    controls.minDistance = r * 1.3; controls.maxDistance = r * 12; controls.target.copy(centre);
+    const reset = () => {
+      controls.target.copy(centre);
+      const halfAngle = Math.min(THREE.MathUtils.degToRad(camera.fov / 2), Math.atan(Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect));
+      const distance = r / Math.sin(halfAngle) / (camera.aspect >= 1.35 ? .97 : .92);
+      const direction = view === 'top' ? new THREE.Vector3(0, 0, 1) : view === 'side' ? new THREE.Vector3(0, -1, 0) : new THREE.Vector3(1.75, -2.55, 3.2).normalize();
+      camera.up.set(0, view === 'top' ? 1 : 0, view === 'top' ? 0 : 1);
+      camera.position.copy(centre).addScaledVector(direction, distance); controls.update();
+    };
+    sceneRef.current = { reset, zoom: factor => { camera.position.sub(controls.target).multiplyScalar(factor).add(controls.target); controls.update(); } };
+    let previousAspect = 0;
+    const size = () => {
+      if (!mount.clientWidth || !mount.clientHeight) return;
+      renderer.setSize(mount.clientWidth, mount.clientHeight); camera.aspect = mount.clientWidth / mount.clientHeight; camera.updateProjectionMatrix();
+      if (Math.abs(camera.aspect - previousAspect) > .01) { reset(); previousAspect = camera.aspect; }
+    };
+    const observer = new ResizeObserver(size); observer.observe(mount); size();
+    let frame = 0;
+    const render = () => { controls.update(); renderer.render(scene, camera); frame = requestAnimationFrame(render); }; render();
+    return () => {
+      cancelAnimationFrame(frame); observer.disconnect(); controls.dispose(); geometry.dispose(); material.dispose();
+      floorGeometry.dispose(); floorMaterial.dispose(); floorDepthMaterial.dispose(); light.shadow.map?.dispose(); light.shadow.mapPass?.dispose(); environmentScene.dispose(); env.dispose(); pmrem.dispose(); renderer.dispose(); renderer.domElement.remove(); sceneRef.current = null;
+    };
+  }, [mesh, view, wireframe, webglError]);
+  const d = mesh?.dimensions, bevel = mesh && 'bevelDimensions' in mesh ? mesh.bevelDimensions : null;
+  const bound = mesh ? mesh.profile.outer.reduce((r, p) => Math.max(r, Math.abs(p.x), Math.abs(p.y)), 0) * 1.24 : 40;
+  const path = mesh ? [mesh.profile.outer, ...(mesh.profile.hole ? [mesh.profile.hole] : [])].map(loop => 'M' + loop.map(p => `${p.x},${-p.y}`).join('L') + 'Z').join(' ') : '';
+  const is2d = view === '2d' || webglError;
+  const choose = (next: View) => { setWebglError(false); setView(next); };
+  return <div className="gear-viewer">
+    <div className="canvas-area">
+      {!is2d && <div className="webgl-host" ref={host} />}
+      {is2d && mesh && <svg className="profile-svg" viewBox={`${-bound} ${-bound} ${2 * bound} ${2 * bound}`} role="img" aria-label={bevel ? 'XY-проекция пространственного большого контура' : 'Расчётный поперечный профиль в масштабе'}>
+        <path d={path} fill="#d5b774" fillRule="evenodd" stroke="#8a652f" strokeWidth={bound / 240} />
+        {showDimensions && d && !isRackKind(mesh.params.kind) && <circle r={d.pitchDiameter / 2} fill="none" stroke="#6b7795" strokeWidth={bound / 220} strokeDasharray={`${bound / 18} ${bound / 35}`} />}
+      </svg>}
+      {showDimensions && d && <div className="dimension-overlay"><span>{mesh && isRackKind(mesh.params.kind) ? 'L' : '⌀ da'} {format(mesh && isRackKind(mesh.params.kind) ? d.rackLength : d.tipDiameter)} мм</span><span>{bevel ? 'H по оси' : mesh?.params.kind === 'worm' ? 'L' : 'b'} {format(bevel?.axialExtent ?? d.width)} мм</span></div>}
+      {error && <div className="model-error" role="alert"><strong>Проверьте параметры</strong><p>{error}</p></div>}
+    </div>
+    <div className="viewer-control-row">
+      <div className="viewer-view-buttons" role="group" aria-label="Вид модели">
+        <button className={!is2d && view === '3d' ? 'active' : ''} aria-pressed={!is2d && view === '3d'} onClick={() => choose('3d')}><Box size={20} />3D</button>
+        <button className={is2d ? 'active' : ''} aria-pressed={is2d} onClick={() => choose('2d')}><Waves size={20} />{bevel ? 'Проекция' : 'Профиль'}</button>
+        <button className={!is2d && view === 'top' ? 'active' : ''} aria-pressed={!is2d && view === 'top'} onClick={() => choose('top')}><CircleDot size={20} />Сверху</button>
+        <button className={!is2d && view === 'side' ? 'active' : ''} aria-pressed={!is2d && view === 'side'} onClick={() => choose('side')}><PanelTop size={20} />Сбоку</button>
+      </div>
+      <div className="viewer-tools" role="group" aria-label="Масштаб модели">
+        <button aria-label="Приблизить" title="Приблизить" disabled={is2d || !mesh} onClick={() => sceneRef.current?.zoom(.82)}><Plus size={21} /></button>
+        <button aria-label="Отдалить" title="Отдалить" disabled={is2d || !mesh} onClick={() => sceneRef.current?.zoom(1.22)}><Minus size={21} /></button>
+        <button aria-label="Сбросить вид" title="Сбросить вид" disabled={is2d || !mesh} onClick={() => sceneRef.current?.reset()}><RotateCcw size={20} /></button>
+      </div>
+    </div>
+    <div className="viewer-caption"><span><Move size={14} />{is2d ? bevel ? 'XY-проекция большого контура' : 'Расчётный профиль' : 'Вращайте мышью · масштаб колёсиком'}</span>
+      <div><button className={showDimensions ? 'active' : ''} aria-label="Показать размеры" aria-pressed={showDimensions} title="Размеры" onClick={() => setShowDimensions(v => !v)}><Ruler size={17} /></button><button className={wireframe ? 'active' : ''} aria-label="Показать сетку" aria-pressed={wireframe} title="Сетка" onClick={() => setWireframe(v => !v)}><Grid2X2 size={17} /></button></div>
+    </div>
+  </div>;
 }
-function format(n:number){return n.toLocaleString('ru-RU',{maximumFractionDigits:2})}
+function format(n: number) { return n.toLocaleString('ru-RU', { maximumFractionDigits: 2 }); }

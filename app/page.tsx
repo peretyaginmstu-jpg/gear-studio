@@ -1,34 +1,173 @@
 "use client";
-import {useDeferredValue,useEffect,useMemo,useRef,useState} from 'react';
-import {Settings2,Camera,Download,Cog,ArrowUpRight,ScanLine,Printer,BookOpen,Check,ChevronRight,SlidersHorizontal,RotateCcw,Ruler,Grid2X2,Info,FileJson,AlertTriangle,Link2} from 'lucide-react';
-import {Tabs,TabsList,TabsTrigger} from '@/components/ui/tabs';
-import {Select,SelectTrigger,SelectValue,SelectContent,SelectItem} from '@/components/ui/select';
-import {Toaster,toast} from 'sonner';
-import {GearViewer} from '@/components/gear/GearViewer';
-import {PhotoWizard} from '@/components/gear/PhotoWizard';
-import {PrintDialog} from '@/components/gear/PrintDialog';
-import {ReferenceDialog} from '@/components/gear/ReferenceDialog';
-import {PairDialog} from '@/components/gear/PairDialog';
-import {validateMesh} from '@/lib/gearMath';
-import {buildModelMesh,defaultModel,modelDimensionsForReport,modelSpatialGeometryForReport,modelNames as names,isRackKind,isInternalKind,isHelicalKind,type ModelParams,type ModelKind} from '@/lib/model';
-import {ExportDialog} from '@/components/gear/ExportDialog';
-import {downloadBlob} from '@/lib/download';
-const fmt=(n:number,digits=2)=>n.toLocaleString('ru-RU',{maximumFractionDigits:digits,minimumFractionDigits:digits});
-export default function Home(){
- const [params,setParams]=useState<ModelParams>(defaultModel());const deferred=useDeferredValue(params);const [mode,setMode]=useState('manual'),[reference,setReference]=useState(false),[print,setPrint]=useState(false),[dimensions,setDimensions]=useState(true),[wireframe,setWireframe]=useState(false),[exportOpen,setExportOpen]=useState(false),[pairOpen,setPairOpen]=useState(false);const [origin,setOrigin]=useState('Параметры заданы вручную');const [evidence,setEvidence]=useState<unknown>(null);
- const calculation=useMemo(()=>{try{const mesh=buildModelMesh(deferred);const validation=validateMesh(mesh);if(!validation.valid)throw new Error('Сетка не прошла проверку. Измените параметры.');return {mesh,validation,error:null}}catch(e){return {mesh:null,validation:null,error:e instanceof Error?e.message:'Не удалось построить профиль.'}}},[deferred]);
- const {mesh,validation,error}=calculation,d=mesh?.dimensions,isHelical=isHelicalKind(params.kind),isRack=isRackKind(params.kind),isInternal=isInternalKind(params.kind),isWorm=params.kind==='worm',isCycloidal=params.kind==='cycloidal',isBevel=params.kind==='bevel',bd=mesh&&'bevelDimensions' in mesh?mesh.bevelDimensions:null,wd=mesh&&'wormDimensions' in mesh?mesh.wormDimensions:null,cd=mesh&&'cycloidalDimensions' in mesh?mesh.cycloidalDimensions:null;const updating=deferred!==params;const stateRef=useRef({params,calculation});useEffect(()=>{stateRef.current={params,calculation}},[params,calculation]);
- const change=(key:keyof ModelParams,value:number)=>{setParams(p=>({...p,[key]:value}));setOrigin('Параметры заданы вручную');setEvidence(null)};
- const selectKind=(kind:ModelKind)=>{setParams(defaultModel(kind));setOrigin('Параметры заданы вручную');setEvidence(null)};
- const reset=()=>{setParams(defaultModel(params.kind));setOrigin('Параметры заданы вручную');setEvidence(null);toast('Исходные параметры восстановлены')};
- const downloadParams=()=>{if(!mesh||!validation)return;downloadBlob(JSON.stringify({schema:'zatseplenie.gear.v4',appVersion:'0.4.0',units:'mm',origin,evidence,parameters:mesh.params,dimensions:modelDimensionsForReport(mesh),wormDimensions:wd,cycloidalDimensions:cd,cycloidalDiagnostics:'cycloidalDiagnostics' in mesh?mesh.cycloidalDiagnostics:null,bevelDimensions:bd,bevelDiagnostics:'bevelDiagnostics' in mesh?mesh.bevelDiagnostics:null,spatialGeometry:modelSpatialGeometryForReport(mesh),rootDiagnostics:mesh.profile.rootDiagnostics??null,meshValidation:validation,warnings:mesh.warnings,verified:['Аналитический профиль в заданной области','Топология треугольной сетки'],notVerified:['Ответное колесо и контакт пары','Прочность и ресурс','Точность изготовления','Точное соответствие образцу по фото']},null,2),'application/json','gear-parameters.json');toast('Скачивание паспорта запрошено')};
- useEffect(()=>{const context=(document as Document&{modelContext?:{registerTool:(tool:unknown,options:unknown)=>void|Promise<void>}}).modelContext;if(!context?.registerTool)return;const lifecycle=new AbortController();const registration=context.registerTool({name:'configure_gear',title:'Задать параметры колеса',description:'Изменяет параметры в конструкторе, проверяет геометрию и возвращает номинальные размеры. Не подтверждает прочность или изготовление.',inputSchema:{type:'object',properties:{kind:{type:'string',enum:Object.keys(names)},teeth:{type:'integer',minimum:1,maximum:250},module:{type:'number',minimum:.1,maximum:30},width:{type:'number',exclusiveMinimum:0,maximum:500},bore:{type:'number',minimum:0},pressureAngleDeg:{type:'number',minimum:10,maximum:35},helixAngleDeg:{type:'number',minimum:-45,maximum:45},profileShift:{type:'number',minimum:-.8,maximum:1},backlash:{type:'number',minimum:0},wormStarts:{type:'integer',minimum:1,maximum:8},wormDiameterFactor:{type:'number',exclusiveMinimum:2.5,maximum:100},wormHand:{type:'string',enum:['right','left']},cycloidRollingRadius:{type:'number',exclusiveMinimum:0,description:'Радиус производящей окружности циклоидального колеса в мм; не больше m·z/4'},bevelMateTeeth:{type:'integer',minimum:6,maximum:250,description:'Число зубьев партнёра для определения делительного конуса'},bevelShaftAngleDeg:{type:'number',exclusiveMinimum:0,exclusiveMaximum:180,description:'Угол пересекающихся осей; оба делительных конуса должны оставаться острыми'}},additionalProperties:false},annotations:{readOnlyHint:false,untrustedContentHint:false},execute:async(input:unknown)=>{if(!input||typeof input!=='object'||Array.isArray(input))throw new Error('Ожидается объект параметров.');const allowed=['kind','teeth','module','width','bore','pressureAngleDeg','helixAngleDeg','profileShift','backlash','wormStarts','wormDiameterFactor','wormHand','cycloidRollingRadius','bevelMateTeeth','bevelShaftAngleDeg'];if(Object.keys(input).some(k=>!allowed.includes(k)))throw new Error('Неизвестный параметр.');const patch=input as Partial<ModelParams>;if(patch.kind!==undefined&&!Object.hasOwn(names,patch.kind))throw new Error('Неизвестный тип.');const base=patch.kind&&patch.kind!==stateRef.current.params.kind?defaultModel(patch.kind):stateRef.current.params;const p={...base,...patch} as ModelParams;const m=buildModelMesh(p);const check=validateMesh(m);if(!check.valid)throw new Error('Некорректная сетка');setParams(p);setEvidence(null);setOrigin('Параметры заданы через инструмент конструктора');setMode('manual');await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));return {appVersion:'0.4.0',parameters:m.params,dimensions:modelDimensionsForReport(m),wormDimensions:'wormDimensions' in m?m.wormDimensions:null,cycloidalDimensions:'cycloidalDimensions' in m?m.cycloidalDimensions:null,bevelDimensions:'bevelDimensions' in m?m.bevelDimensions:null,warnings:m.warnings,meshValid:check.valid};}},{signal:lifecycle.signal});Promise.resolve(registration).catch(()=>{});return()=>lifecycle.abort()},[]);
- return <div className="studio"><Toaster position="bottom-center" richColors/><header className="topbar"><a className="brand" href={`${process.env.NEXT_PUBLIC_BASE_PATH||''}/`}><span className="brand-symbol"><Cog/></span>ЗАЦЕПЛЕНИЕ<span className="brand-version">LAB</span></a><span className="top-context">Параметрический конструктор</span><button className="text-button" onClick={()=>setReference(true)}><BookOpen size={17}/> Справочник</button></header><section className="page-heading"><div><p className="eyebrow">ОТ ОБРАЗЦА К МОДЕЛИ</p><h1>Создайте своё зубчатое колесо.</h1></div><span className="local-label"><span/> Расчёт на вашем устройстве</span></section><main className="workspace"><aside className="parameters"><div className="panel-heading"><span className="section-number">01</span><h2>Исходные данные</h2></div><Tabs value={mode} onValueChange={setMode}><TabsList className="mode-tabs"><TabsTrigger value="manual"><Settings2/> Вручную</TabsTrigger><TabsTrigger value="photo"><Camera/> По фото</TabsTrigger></TabsList></Tabs>{mode==='photo'?<PhotoWizard onApply={(p,source,facts)=>{setParams({...defaultModel(p.kind),...p});setOrigin(source);setEvidence(facts);setMode('manual');toast.success('Параметры применены. Проверьте 3D-модель.')}} onManual={()=>setMode('manual')}/>:<><label className="field-label" htmlFor="gear-kind">Тип зацепления</label><Select value={params.kind} onValueChange={v=>selectKind(v as ModelKind)}><SelectTrigger id="gear-kind" className="select-control"><SelectValue/></SelectTrigger><SelectContent>{Object.entries(names).map(([key,title])=><SelectItem key={key} value={key}>{title}</SelectItem>)}</SelectContent></Select><button className="family-help" onClick={()=>setReference(true)}>Другие типы зацеплений <ArrowUpRight size={13}/></button><div className="section-divider"/><div className="input-grid">{isWorm?<NumberField label="Число заходов" symbol="z₁" value={params.wormStarts??1} min={1} max={8} onChange={v=>change('wormStarts',v)}/>:<NumberField label="Число зубьев" symbol="z" value={params.teeth} min={isRack?1:6} max={250} onChange={v=>change('teeth',v)}/>}<NumberField label={isWorm?'Осевой модуль':isCycloidal?'Делит. модуль':isBevel?'Внешний модуль':isHelical?'Норм. модуль':'Модуль'} symbol={isWorm?'mₓ, мм':isBevel?'mₑ, мм':isHelical?'mₙ, мм':'m, мм'} value={params.module} min={.1} max={30} step={.1} onChange={v=>change('module',v)}/><NumberField label={isWorm?'Длина нарезки':isBevel?'По образующей':'Ширина'} symbol={isWorm?'L, мм':'b, мм'} value={params.width} min={.1} max={500} step={.5} onChange={v=>change('width',v)}/>{!isRack&&!isInternal?<NumberField label="Отверстие" symbol="⌀, мм" value={params.bore} min={0} step={.1} onChange={v=>change('bore',v)}/>:isInternal?<NumberField label="Обод" symbol="мм" value={params.rimThickness??3*params.module} min={.1} step={.5} onChange={v=>change('rimThickness',v)}/>:<NumberField label="Основание" symbol="мм" value={params.rackBaseHeight??3*params.module} min={.1} step={.5} onChange={v=>change('rackBaseHeight',v)}/>}</div>{isWorm&&<div className="helix-field"><NumberField label="Коэффициент диаметра" symbol="q" value={params.wormDiameterFactor??10} min={2.51} max={100} step={.5} onChange={v=>change('wormDiameterFactor',v)}/><label className="field-label photo-spaced" htmlFor="worm-hand">Направление витка</label><Select value={params.wormHand??'right'} onValueChange={v=>{setParams(p=>({...p,wormHand:v as 'right'|'left'}));setEvidence(null);setOrigin('Параметры заданы вручную')}}><SelectTrigger id="worm-hand" className="select-control"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="right">Правое</SelectItem><SelectItem value="left">Левое</SelectItem></SelectContent></Select></div>}{isCycloidal&&<div className="helix-field"><NumberField label="Производящий радиус" symbol="r, мм" value={params.cycloidRollingRadius??Math.min(2*params.module,params.module*params.teeth/4)} min={.001} max={params.module*params.teeth/4} step={.1} onChange={v=>change('cycloidRollingRadius',v)}/><p className="field-help">Один радиус для эпициклоиды и гипоциклоиды. По умолчанию min(2m, R/2); допустимость высот проверяется отдельно.</p></div>}{isBevel&&<div className="helix-field"><div className="input-grid"><NumberField label="Зубьев партнёра" symbol="z₂" value={params.bevelMateTeeth??params.teeth} min={6} max={250} onChange={v=>change('bevelMateTeeth',v)}/><NumberField label="Угол осей" symbol="Σ, °" value={params.bevelShaftAngleDeg??90} min={1} max={179} step={1} onChange={v=>change('bevelShaftAngleDeg',v)}/></div><p className="field-help">Партнёр задаёт делительный конус. Внешний модуль — на большом торце; ширина b — по образующей. Контакт пары не рассчитан.</p></div>}{isHelical&&<div className="helix-field"><NumberField label="Угол наклона зуба" symbol="β, °" value={params.helixAngleDeg} min={-45} max={45} onChange={v=>change('helixAngleDeg',v)}/><p className="field-help">Знак меняет направление винтовой линии.</p></div>}<div className="section-divider"/>{!isCycloidal&&<div className="input-grid"><NumberField label={isWorm?'Осевой угол':'Угол профиля'} symbol={isWorm?'αₓ, °':isHelical?'αₙ, °':'α, °'} value={params.pressureAngleDeg} min={10} max={35} step={.5} onChange={v=>change('pressureAngleDeg',v)}/>{!isWorm&&!isBevel&&<NumberField label="Смещение" symbol="x" value={params.profileShift} min={-.8} max={1} step={.05} onChange={v=>change('profileShift',v)}/>}</div>}{isBevel&&<p className="field-help">Сферическая эвольвента; ha = mₑ, hf = 1,25mₑ. Поддержана впадина не ниже основного конуса; переходная поверхность и галтель не построены.</p>}{isCycloidal&&<p className="field-help">Эпициклоида + гипоциклоида; ha = m, hf = 1,25m. Постоянный угол давления неприменим, смещение x = 0.</p>}<details className="advanced-settings"><summary><SlidersHorizontal size={16}/> Тонкая настройка</summary><NumberField label="Уменьшение толщины зуба" symbol="мм" value={params.backlash} min={0} step={.01} onChange={v=>change('backlash',v)}/><p className="field-help">{isWorm?'В осевом сечении витка.':isCycloidal?'По делительной окружности одного колеса.':isBevel?'По внешней делительной окружности; уменьшается к малому торцу.':'В нормальном сечении для одного колеса.'} Не суммарный зазор пары.</p>{!isInternal&&!isRack&&!isWorm&&!isCycloidal&&!isBevel&&<><NumberField label="Радиус вершины рейки" symbol="ρ / mₙ" value={params.toolTipRadiusCoefficient??.3} min={.05} max={.5} step={.01} onChange={v=>change('toolTipRadiusCoefficient',v)}/><p className="field-help">Параметр производящего инструмента. По фото не определяется.</p></>}<button className="text-button reset-params" onClick={reset}><RotateCcw size={14}/> Сбросить параметры</button></details><div className="parameter-note"><ScanLine size={19}/><p>Есть образец? <button onClick={()=>setMode('photo')}>Восстановите параметры по фото.</button></p></div></>}</aside>
- <section className="model-panel"><div className="model-heading"><div><span className="eyebrow">РАСЧЁТНАЯ МОДЕЛЬ</span><h2>{names[params.kind]}</h2></div><span className="tiny-tag">{isWorm?'Осевой профиль ZA':isCycloidal?'Циклоидальный профиль':isBevel?'Сферическая эвольвента':isRack?'Реечный профиль':'Эвольвента'}</span></div>{mode==='photo'&&<p className="photo-model-note" role="note">Здесь показана текущая модель. Параметры фото появятся после подтверждения и применения.</p>}<GearViewer mesh={mesh} error={error} showDimensions={dimensions} wireframe={wireframe}/><footer className="canvas-footer"><span>{isWorm?'z₁':'z'} {isWorm?params.wormStarts:Number.isFinite(params.teeth)?params.teeth:'—'} <span className="footer-dot">·</span> {isBevel?'mₑ':'m'} {Number.isFinite(params.module)?fmt(params.module,2):'—'} <span className="footer-dot">·</span> {isCycloidal?<>r {fmt(cd?.rollingRadius??params.cycloidRollingRadius??Math.min(2*params.module,params.module*params.teeth/4))} мм</>:<>α {params.pressureAngleDeg}°</>}</span><div className="display-toggles"><button className={dimensions?'active':''} aria-label="Показать размеры" aria-pressed={dimensions} title="Размеры" onClick={()=>setDimensions(v=>!v)}><Ruler size={16}/></button><button className={wireframe?'active':''} aria-label="Показать сетку" aria-pressed={wireframe} title="Сетка" onClick={()=>setWireframe(v=>!v)}><Grid2X2 size={16}/></button></div></footer><div className="process-line"><span><Check size={15}/> Параметры</span><ChevronRight size={16}/><span className={mesh?'process-ok':''}>{mesh&&<Check size={15}/>} Геометрия</span><ChevronRight size={16}/><button disabled={!mesh} onClick={()=>setPrint(true)}>3D-печать <ArrowUpRight size={13}/></button></div></section>
- <aside className="results"><div className="panel-heading"><span className="section-number">02</span><h2>Геометрия</h2></div><div className="main-dimension"><span>{isRack?'Длина зубчатой рейки':isBevel?'Большой делительный диаметр':'Делительный диаметр'}</span><strong data-testid="pitch-diameter">{d?fmt(isRack?d.rackLength:d.pitchDiameter):'—'}<small>мм</small></strong></div><dl className="dimension-list">{d?<><Dimension label={isRack?'Высота рейки':isBevel?'Большой диаметр вершин':'Диаметр вершин'} value={isRack?d.rackHeight:d.tipDiameter}/>{!isRack&&<Dimension label={isBevel?"Большой диаметр впадин":"Диаметр впадин"} value={d.rootDiameter}/>}<Dimension label={isWorm?"Осевой шаг":isCycloidal?"Делительный шаг":isBevel?"Внешний окружной шаг":"Торцевой шаг"} value={wd?.axialPitch??d.transverseCircularPitch} digits={3}/><Dimension label={isWorm?"Осевой размер вершины":isCycloidal?"Дуга вершины":isBevel?"Хорда малой вершины":"Толщина вершины"} value={bd?.innerTipChordThickness??wd?.axialTipThickness??d.tipThickness} digits={3}/>{bd&&<><div><dt>Делительный конус δ₁</dt><dd>{fmt(bd.pitchConeAngleDeg)}°</dd></div><div><dt>Основной конус δᵦ</dt><dd>{fmt(bd.baseConeAngleDeg)}°</dd></div><Dimension label="Конусное расстояние Rₑ" value={bd.outerConeDistance}/><Dimension label="Малый модуль mᵢ" value={bd.innerModule} digits={3}/><Dimension label="Высота по оси H" value={bd.axialExtent}/></>}{cd&&<><Dimension label="Производящий радиус" value={cd.rollingRadius}/><div><dt>Постоянный угол α</dt><dd>Неприменим</dd></div></>}{wd&&<><Dimension label="Ход витка" value={wd.lead}/><div><dt>Угол подъёма γ</dt><dd>{fmt(wd.leadAngleDeg)}°</dd></div></>}{isHelical&&<Dimension label="Торцевой модуль" value={d.transverseModule} digits={3}/>}</>:<p className="field-help">Размеры появятся после исправления параметров.</p>}</dl><div className="result-actions"><button className="primary-button full export-button" disabled={!mesh||updating} onClick={()=>setExportOpen(true)}><Download size={17}/> Скачать STL <span>↗</span></button><button className="secondary-button full" disabled={!mesh||updating} onClick={downloadParams}><FileJson size={16}/> Паспорт модели</button><button className="secondary-button full pair-button" disabled={!mesh||updating} onClick={()=>setPairOpen(true)}><Link2 size={16}/> Проверить пару</button></div><button className="print-card print-card-button" disabled={!mesh} onClick={()=>setPrint(true)}><Printer size={24}/><h3>Из модели — в деталь</h3><p>Проверка габаритов и толщины зуба для вашего 3D-принтера.</p><span className="print-link">Оценить печать <ArrowUpRight size={16}/></span></button><div className="export-note"><Info size={16}/><span>STL в мм. Пригодность для рабочей передачи требует проверки пары и нагрузки.</span></div></aside></main>
- <section className="verification-strip"><div className="verification-status"><span className={mesh?'check-icon':'error-icon'}>{mesh?<Check size={16}/>:<AlertTriangle size={16}/>}</span><div><strong>{updating?'Пересчитываем модель…':mesh?'Профиль рассчитан. Сетка замкнута.':'Параметры требуют уточнения.'}</strong><p>{origin}</p></div>{validation&&<span className="mesh-count">{validation.triangles.toLocaleString('ru-RU')} треугольников</span>}</div><details className="calculation-details"><summary>Допущения и проверка геометрии <ChevronRight size={15}/></summary>{mesh?<><ul>{mesh.warnings.map(w=><li className={w.severity} key={w.code}>{w.message}</li>)}</ul>{'cycloidalDiagnostics' in mesh&&<p>Верхняя граница отклонения плоской хорды: {fmt(mesh.cycloidalDiagnostics.maxChordErrorBound,5)} мм при допуске {fmt(mesh.cycloidalDiagnostics.profileTolerance,4)} мм. Граница относится к аналитическому 2D-контуру до Float32; точность STL и изготовления не сертифицирована.</p>}{'bevelDiagnostics' in mesh&&<p>Верхние границы дискретизации: боковина {fmt(mesh.bevelDiagnostics.maxFlankChordErrorBound,5)} мм; задний конус {fmt(mesh.bevelDiagnostics.maxEndCapErrorBound,5)} мм при допуске {fmt(mesh.bevelDiagnostics.profileTolerance,4)} мм. Оценки до Float32; рабочий допуск изготовления не задан.</p>}{mesh.profile.rootDiagnostics&&<p>Численная проверка дискретизации профиля: {fmt(mesh.profile.rootDiagnostics.maxSampledChordError,5)} мм при заданном {fmt(mesh.profile.rootDiagnostics.profileTolerance,3)} мм. Это выборочная оценка хорды профиля, не класс точности всей детали.</p>}<p>Пара колёс, нагрузка, ресурс и точность изготовления не проверялись. <button className="inline-link" onClick={()=>setReference(true)}>Подробнее о методе</button></p></>:<p>{error}</p>}</details></section>
- <footer className="page-footer"><span>ЗАЦЕПЛЕНИЕ <span className="muted">/ инженерная мастерская</span></span><span>Локальные вычисления · Миллиметры · Версия 0.4</span></footer>
- <ReferenceDialog open={reference} onOpenChange={setReference}/><PrintDialog open={print} onOpenChange={setPrint} mesh={mesh} validation={validation}/><ExportDialog open={exportOpen} onOpenChange={setExportOpen} params={params}/><PairDialog open={pairOpen} onOpenChange={setPairOpen} params={params}/></div>
+import { useDeferredValue, useMemo, useRef, useState } from 'react';
+import { Camera, Download, Cog, ArrowRight, Printer, BookOpen, Check, ChevronRight, ChevronDown, Pencil, Info, FileJson, FileText, AlertTriangle, Link2, Grid2X2, ScanLine, ShieldCheck } from 'lucide-react';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Toaster, toast } from 'sonner';
+import { GearViewer } from '@/components/gear/GearViewer';
+import { PhotoWizard } from '@/components/gear/PhotoWizard';
+import { PrintDialog } from '@/components/gear/PrintDialog';
+import { ReferenceDialog } from '@/components/gear/ReferenceDialog';
+import { PairDialog } from '@/components/gear/PairDialog';
+import { ExportDialog } from '@/components/gear/ExportDialog';
+import { ParameterEditor } from '@/components/gear/ParameterEditor';
+import { useGearTool } from '@/components/gear/useGearTool';
+import { validateMesh } from '@/lib/gearMath';
+import { buildModelMesh, defaultModel, modelNames, isRackKind, isInternalKind, isHelicalKind, type ModelParams, type ModelKind } from '@/lib/model';
+import { createModelPassport, type ExportPreset } from '@/lib/modelExport';
+import { downloadBlob } from '@/lib/download';
+
+const fmt = (n: number, digits = 2) => Number.isFinite(n) ? n.toLocaleString('ru-RU', { maximumFractionDigits: digits }) : '—';
+
+export default function Home() {
+  const [params, setParams] = useState<ModelParams>(defaultModel()), deferred = useDeferredValue(params);
+  const [mode, setMode] = useState<'manual' | 'photo'>('manual'), [parametersOpen, setParametersOpen] = useState(false);
+  const [reference, setReference] = useState(false), [print, setPrint] = useState(false), [pairOpen, setPairOpen] = useState(false), [exportOpen, setExportOpen] = useState(false);
+  const [preset, setPreset] = useState<ExportPreset>('pro'), [origin, setOrigin] = useState('Параметры заданы вручную'), [evidence, setEvidence] = useState<unknown>(null);
+  const editorRef = useRef<HTMLElement>(null);
+  const calculation = useMemo(() => {
+    try {
+      const mesh = buildModelMesh(deferred), validation = validateMesh(mesh);
+      if (!validation.valid) throw new Error('Сетка не прошла проверку. Измените параметры.');
+      return { mesh, validation, error: null };
+    } catch (e) { return { mesh: null, validation: null, error: e instanceof Error ? e.message : 'Не удалось построить профиль.' }; }
+  }, [deferred]);
+  const { mesh, validation, error } = calculation, updating = deferred !== params, ready = !!mesh && !!validation && !updating;
+  const d = mesh?.dimensions, worm = mesh && 'wormDimensions' in mesh ? mesh.wormDimensions : null;
+  const cycloidal = mesh && 'cycloidalDimensions' in mesh ? mesh.cycloidalDimensions : null, bevel = mesh && 'bevelDimensions' in mesh ? mesh.bevelDimensions : null;
+  const rack = isRackKind(params.kind), internal = isInternalKind(params.kind), isWorm = params.kind === 'worm', isBevel = params.kind === 'bevel';
+  const moduleSymbol = isWorm ? 'mₓ' : isBevel ? 'mₑ' : isHelicalKind(params.kind) ? 'mₙ' : 'm';
+  const manual = () => { setOrigin('Параметры заданы вручную'); setEvidence(null); };
+  const change = (key: keyof ModelParams, value: number) => { setParams(p => ({ ...p, [key]: value })); manual(); };
+  const selectKind = (kind: ModelKind) => { setParams(defaultModel(kind)); manual(); };
+  const reset = () => { setParams(defaultModel(params.kind)); manual(); toast('Исходные параметры восстановлены'); };
+  const openEditor = (nextMode: 'manual' | 'photo') => {
+    setMode(nextMode); setParametersOpen(true);
+    requestAnimationFrame(() => editorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  };
+  const openExport = (next: ExportPreset) => { if (ready) { setPreset(next); setExportOpen(true); } };
+  const downloadParams = () => {
+    if (!mesh || !validation || !ready) return;
+    downloadBlob(JSON.stringify(createModelPassport(mesh, validation, { origin, evidence }), null, 2), 'application/json', 'gear-parameters.json');
+    toast('Скачивание паспорта текущей модели запрошено');
+  };
+  useGearTool(params, p => { setParams(p); setEvidence(null); setOrigin('Параметры заданы через инструмент конструктора'); setMode('manual'); });
+
+  return <div className="studio studio-v5">
+    <Toaster position="bottom-center" richColors />
+    <header className="topbar">
+      <a className="brand" href={`${process.env.NEXT_PUBLIC_BASE_PATH || ''}/`}><span className="brand-symbol"><Cog /></span>ЗАЦЕПЛЕНИЕ<span className="brand-version">LAB</span></a>
+      <span className="top-context">Модель и изготовление</span>
+      <button className="text-button header-reference" onClick={() => setReference(true)}><BookOpen size={20} /> Справочник</button>
+    </header>
+    <main className="workbench">
+      <section className="workbench-model" aria-label="Текущая модель">
+        <div className="ready-heading">
+          <h1>{updating ? 'Пересчитываем модель…' : mesh ? 'Ваша модель готова' : 'Уточните параметры модели'}</h1>
+          <div className="model-chips"><span className="model-family">{modelNames[params.kind]}</span>
+            <span className="parameter-chip">{isWorm ? 'z₁' : 'z'} <strong>{fmt(isWorm ? params.wormStarts ?? 1 : params.teeth, 0)}</strong></span>
+            <span className="parameter-chip">{moduleSymbol} <strong>{fmt(params.module)} мм</strong></span>
+            <span className="parameter-chip">{isWorm ? 'L' : 'b'} <strong>{fmt(params.width)} мм</strong></span>
+          </div>
+          {mode === 'photo' && <p className="photo-model-note" role="note">Здесь показана текущая модель. Параметры фото появятся после подтверждения и применения.</p>}
+        </div>
+        <GearViewer mesh={mesh} error={error} />
+      </section>
+
+      <section className="source-panel" ref={editorRef} aria-label="Параметры и исходные данные">
+        <button className="panel-disclosure" aria-expanded={parametersOpen} aria-controls="parameter-editor" onClick={() => setParametersOpen(v => !v)}>
+          <span><ScanLine size={22} /> Параметры и исходные данные</span><ChevronDown size={20} className={parametersOpen ? 'is-open' : ''} />
+        </button>
+        <dl className="parameter-summary">
+          <div><dt>Тип зацепления</dt><dd>{modelNames[params.kind]}</dd></div>
+          <div><dt>{isWorm ? 'Число заходов' : 'Число зубьев'}</dt><dd>{isWorm ? 'z₁' : 'z'}&nbsp; {fmt(isWorm ? params.wormStarts ?? 1 : params.teeth, 0)}</dd></div>
+          <div><dt>{isBevel ? 'Внешний модуль' : isWorm ? 'Осевой модуль' : isHelicalKind(params.kind) ? 'Нормальный модуль' : 'Модуль'}</dt><dd>{moduleSymbol}&nbsp; {fmt(params.module)} мм</dd></div>
+          <div><dt>{isBevel ? 'По образующей' : isWorm ? 'Длина нарезки' : 'Ширина'}</dt><dd>{isWorm ? 'L' : 'b'}&nbsp; {fmt(params.width)} мм</dd></div>
+          <div><dt>{internal ? 'Обод' : rack ? 'Основание' : 'Отверстие'}</dt><dd>{!internal && !rack && '⌀ '}{fmt(internal ? params.rimThickness ?? 3 * params.module : rack ? params.rackBaseHeight ?? 3 * params.module : params.bore)} мм</dd></div>
+        </dl>
+        <div className="source-actions">
+          <button className={`secondary-button ${parametersOpen && mode === 'photo' ? 'chosen' : ''}`} onClick={() => openEditor('photo')}><Camera size={21} /> Восстановить по фото</button>
+          <button className={`secondary-button ${parametersOpen && mode === 'manual' ? 'chosen' : ''}`} onClick={() => openEditor('manual')}><Pencil size={21} /> Задать вручную</button>
+        </div>
+        <div id="parameter-editor" className="source-editor" hidden={!parametersOpen}>
+          {mode === 'photo' ? <PhotoWizard onApply={(p, source, facts) => {
+            setParams({ ...defaultModel(p.kind), ...p }); setOrigin(source); setEvidence(facts); setMode('manual');
+            toast.success('Параметры применены. Проверьте 3D-модель.');
+          }} onManual={() => setMode('manual')} /> : <ParameterEditor params={params} onChange={change} onKind={selectKind}
+            onHand={hand => { setParams(p => ({ ...p, wormHand: hand })); manual(); }} onReset={reset} onReference={() => setReference(true)} />}
+        </div>
+      </section>
+
+      <aside className="delivery-panel" aria-label="Файлы и печать">
+        <Tabs defaultValue="files" className="delivery-tabs">
+          <TabsList className="delivery-tab-list"><TabsTrigger value="files"><FileText size={22} /> Файлы</TabsTrigger><TabsTrigger value="print"><Printer size={22} /> Печать</TabsTrigger></TabsList>
+          <TabsContent value="files" className="delivery-content">
+            <h2>Скачайте модель для своих задач</h2>
+            <p className="delivery-intro">Оба варианта сохраняют аналитический профиль зуба. Детализация сетки не является подтверждением точности или прочности.</p>
+            <fieldset className="package-options"><legend className="visually-hidden">Детализация STL</legend>
+              <label className={`package-card ${preset === 'standard' ? 'selected' : ''}`}>
+                <input type="radio" name="export-preset" value="standard" checked={preset === 'standard'} onChange={() => setPreset('standard')} />
+                <div><strong>Standard STL — бесплатно</strong><p>Средняя детализация для просмотра и пробного изготовления.</p></div>
+              </label>
+              <label className={`package-card package-pro ${preset === 'pro' ? 'selected' : ''}`}>
+                <input type="radio" name="export-preset" value="pro" checked={preset === 'pro'} onChange={() => setPreset('pro')} />
+                <div><strong>Pro STL + паспорт</strong><p>Высокая детализация и параметры именно экспортируемой модели.</p>
+                  <ul><li><Grid2X2 size={19} /> Детализация кривых</li><li><FileJson size={19} /> Паспорт параметров JSON</li><li><ShieldCheck size={19} /> Результат проверки сетки</li></ul>
+                </div>
+              </label>
+            </fieldset>
+            <div className="package-download">
+              <p className="access-note">{preset === 'pro' ? 'Бесплатно в раннем доступе' : 'Бесплатно. Без регистрации.'}</p>
+              <button className="primary-button full package-primary" disabled={!ready} onClick={() => openExport(preset)}>Скачать {preset === 'pro' ? 'Pro STL' : 'Standard STL'} <ArrowRight size={21} /></button>
+              {preset === 'pro' && <button className="free-download" disabled={!ready} onClick={() => openExport('standard')}><Download size={19} /> Скачать бесплатный Standard STL</button>}
+            </div>
+            <button className="print-path" disabled={!ready} onClick={() => setPrint(true)}><Printer size={25} /><span><strong>Подготовить к печати</strong><small>Выберите материал, проверьте размеры и скачайте задание.</small></span><ChevronRight size={21} /></button>
+            <p className="delivery-note"><Info size={20} /> Перед изготовлением проверьте размеры и сопряжение.</p>
+          </TabsContent>
+          <TabsContent value="print" className="delivery-content print-tab-content">
+            <h2>От модели — к пробной детали</h2><p className="delivery-intro">Проверьте, подходит ли геометрия вашему FDM-принтеру, и сохраните задание для себя или исполнителя.</p>
+            <div className="print-step"><span>01</span><div><strong>Габариты и толщина</strong><p>Стол, сопло, линии, слои и минимальные размеры зуба.</p></div></div>
+            <div className="print-step"><span>02</span><div><strong>Материал и настройки</strong><p>Выберите материал пробной детали. Нагрузку и ресурс рассчитывают отдельно.</p></div></div>
+            <div className="print-step"><span>03</span><div><strong>Задание на печать</strong><p>Файл JSON с параметрами, проверками и вопросами для исполнителя.</p></div></div>
+            <button className="primary-button full package-primary" disabled={!ready} onClick={() => setPrint(true)}>Оценить печать <ArrowRight size={21} /></button>
+            <p className="delivery-note"><Info size={20} /> Заказ и оплата не оформляются. Сейчас доступна оценка геометрии и скачивание задания.</p>
+          </TabsContent>
+        </Tabs>
+      </aside>
+
+      <section className="engineering-panel">
+        <details className="engineering-details"><summary><span>{mesh ? <Check size={20} /> : <AlertTriangle size={20} />} Геометрия и проверка</span><span className="mesh-count">{validation ? `${fmt(validation.triangles, 0)} треугольников` : 'Требует уточнения'} <ChevronDown size={17} /></span></summary>
+          <p className="origin-note">{origin}</p>
+          {d ? <dl className="dimension-list"><Dimension label={rack ? 'Длина рейки' : isBevel ? 'Большой делительный диаметр' : 'Делительный диаметр'} value={rack ? d.rackLength : d.pitchDiameter} testId="pitch-diameter" />
+            <Dimension label={rack ? 'Высота рейки' : isBevel ? 'Большой диаметр вершин' : 'Диаметр вершин'} value={rack ? d.rackHeight : d.tipDiameter} />
+            {!rack && <Dimension label={isBevel ? 'Большой диаметр впадин' : 'Диаметр впадин'} value={d.rootDiameter} />}
+            <Dimension label={isWorm ? 'Осевой шаг' : isBevel ? 'Внешний окружной шаг' : cycloidal ? 'Делительный шаг' : 'Торцевой шаг'} value={worm?.axialPitch ?? d.transverseCircularPitch} digits={3} />
+            <Dimension label={isWorm ? 'Осевой размер вершины' : isBevel ? 'Хорда малой вершины' : cycloidal ? 'Дуга вершины' : 'Толщина вершины'} value={bevel?.innerTipChordThickness ?? worm?.axialTipThickness ?? d.tipThickness} digits={3} />
+            {cycloidal && <><Dimension label="Производящий радиус" value={cycloidal.rollingRadius} /><div><dt>Постоянный угол α</dt><dd>Неприменим</dd></div></>}
+            {worm && <><Dimension label="Ход витка" value={worm.lead} /><div><dt>Угол подъёма γ</dt><dd>{fmt(worm.leadAngleDeg)}°</dd></div></>}
+            {bevel && <><div><dt>Делительный конус δ₁</dt><dd>{fmt(bevel.pitchConeAngleDeg)}°</dd></div><div><dt>Основной конус δᵦ</dt><dd>{fmt(bevel.baseConeAngleDeg)}°</dd></div><Dimension label="Конусное расстояние Rₑ" value={bevel.outerConeDistance} /><Dimension label="Малый модуль mᵢ" value={bevel.innerModule} digits={3} /><Dimension label="Высота по оси H" value={bevel.axialExtent} /></>}
+            {['helical', 'herringbone', 'internal-helical', 'helical-rack'].includes(params.kind) && <Dimension label="Торцевой модуль" value={d.transverseModule} digits={3} />}
+          </dl> : <p className="inline-error">{error}</p>}
+          <div className="engineering-actions">
+            <button className="secondary-button pair-button" disabled={!ready} onClick={() => setPairOpen(true)}><Link2 size={18} /> Проверить пару</button>
+            <button className="secondary-button" disabled={!ready} onClick={downloadParams}><FileJson size={18} /> Паспорт текущей модели</button>
+          </div>
+          {mesh && <div className="calculation-details"><h3>Допущения модели</h3><ul>{mesh.warnings.map(w => <li className={w.severity} key={w.code}>{w.message}</li>)}</ul>
+            {'cycloidalDiagnostics' in mesh && <p>Верхняя граница ошибки плоской хорды: {fmt(mesh.cycloidalDiagnostics.maxChordErrorBound, 5)} мм при допуске {fmt(mesh.cycloidalDiagnostics.profileTolerance, 4)} мм до Float32.</p>}
+            {'bevelDiagnostics' in mesh && <p>Границы дискретизации до Float32: боковина {fmt(mesh.bevelDiagnostics.maxFlankChordErrorBound, 5)} мм; задний конус {fmt(mesh.bevelDiagnostics.maxEndCapErrorBound, 5)} мм при допуске {fmt(mesh.bevelDiagnostics.profileTolerance, 4)} мм.</p>}
+            {mesh.profile.rootDiagnostics && <p>Выборочная ошибка хорды профиля: {fmt(mesh.profile.rootDiagnostics.maxSampledChordError, 5)} мм при заданном {fmt(mesh.profile.rootDiagnostics.profileTolerance, 3)} мм. Это не класс точности детали.</p>}
+            <button className="inline-link" onClick={() => setReference(true)}>Подробнее о методе</button>
+          </div>}
+        </details>
+      </section>
+    </main>
+    <footer className="page-footer"><span>ЗАЦЕПЛЕНИЕ <span className="muted">/ инженерная мастерская</span></span><span>Локальные вычисления · Миллиметры · Версия 0.5</span></footer>
+    <ReferenceDialog open={reference} onOpenChange={setReference} />
+    <PrintDialog open={print && ready} onOpenChange={setPrint} mesh={mesh} validation={validation} />
+    <ExportDialog open={exportOpen && ready} onOpenChange={setExportOpen} params={params} preset={preset} origin={origin} evidence={evidence} />
+    <PairDialog open={pairOpen && ready} onOpenChange={setPairOpen} params={params} />
+  </div>;
 }
-function NumberField({label,symbol,value,onChange,min,max,step=1}:{label:string;symbol:string;value:number;onChange:(v:number)=>void;min?:number;max?:number;step?:number}){return <label className="number-field">{label}<em>{symbol}</em><input aria-label={label} type="number" value={Number.isFinite(value)?value:''} min={min} max={max} step={step} onChange={e=>onChange(e.target.value===''?NaN:Number(e.target.value))}/></label>}
-function Dimension({label,value,digits=2}:{label:string;value:number;digits?:number}){return <div><dt>{label}</dt><dd>{fmt(value,digits)} мм</dd></div>}
+
+function Dimension({ label, value, digits = 2, testId }: { label: string; value: number; digits?: number; testId?: string }) {
+  return <div><dt>{label}</dt><dd data-testid={testId}>{fmt(value, digits)} мм</dd></div>;
+}
