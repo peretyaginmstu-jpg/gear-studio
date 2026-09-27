@@ -9,6 +9,7 @@ import { buildModelMesh, defaultModel, isRackKind, isInternalKind, isHelicalKind
 import { PhotoScale, type PhotoScaleMeasurement } from './PhotoScale';
 
 type ApplyParams = Partial<ModelParams> & { kind: InferredGearKind };
+const inferredKinds: InferredGearKind[] = ['spur', 'helical', 'herringbone', 'internal', 'internal-helical', 'rack', 'helical-rack'];
 export function PhotoWizard({ onApply, onManual }: { onApply: (p: ApplyParams, source: string, evidence: unknown) => void; onManual: () => void }) {
   const fileInput = useRef<HTMLInputElement>(null), request = useRef(0);
   const [image, setImage] = useState<string | null>(null), [analysis, setAnalysis] = useState<PhotoAnalysis | null>(null);
@@ -17,16 +18,17 @@ export function PhotoWizard({ onApply, onManual }: { onApply: (p: ApplyParams, s
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
   const [kind, setKind] = useState('unknown'), [profile, setProfile] = useState('unknown');
   const [teeth, setTeeth] = useState(''), [confirmedTeeth, setConfirmedTeeth] = useState(false);
+  const [damageHypothesisTransferred, setDamageHypothesisTransferred] = useState(false);
   const [diameter, setDiameter] = useState(''), [pitch, setPitch] = useState(''), [diameterMethod, setDiameterMethod] = useState('unknown');
   const [beta, setBeta] = useState(''), [alpha, setAlpha] = useState(''), [shift, setShift] = useState('');
   const [standard, setStandard] = useState(false), [symmetric, setSymmetric] = useState(false);
   const [width, setWidth] = useState(''), [body, setBody] = useState('');
   const [source, setSource] = useState<MeasurementSource>('user_confirmation');
-  const supported = ['spur', 'helical', 'herringbone', 'internal', 'internal-helical', 'rack', 'helical-rack'].includes(kind);
+  const supported = inferredKinds.includes(kind as InferredGearKind);
   const rack = supported && isRackKind(kind as InferredGearKind), internal = supported && isInternalKind(kind as InferredGearKind);
   const helical = supported && isHelicalKind(kind as InferredGearKind);
   const resetAnswers = () => {
-    setKind('unknown'); setProfile('unknown'); setTeeth(''); setConfirmedTeeth(false); setDiameter(''); setPitch('');
+    setKind('unknown'); setProfile('unknown'); setTeeth(''); setConfirmedTeeth(false); setDamageHypothesisTransferred(false); setDiameter(''); setPitch('');
     setDiameterMethod('unknown'); setBeta(''); setAlpha(''); setShift(''); setStandard(false); setSymmetric(false);
     setWidth(''); setBody(''); setSource('user_confirmation'); setPhotoMeasurement(null);
   };
@@ -66,7 +68,8 @@ export function PhotoWizard({ onApply, onManual }: { onApply: (p: ApplyParams, s
       silhouette: analysis?.candidateTypes[0]?.type,
       ...(supported ? { kind: fact(kind as InferredGearKind) } : {}),
       ...(profile !== 'unknown' ? { profileType: fact(profile as 'involute' | 'other') } : {}),
-      ...(teeth !== '' && confirmedTeeth ? { toothCount: fact(Number(teeth)) } : {}),
+      ...(teeth !== '' && confirmedTeeth ? { toothCount: { ...fact(Number(teeth)), ...(damageHypothesisTransferred
+        ? { note: 'Сначала перенесена гипотеза полного числа зубьев при локальном повреждении; затем пользователь отдельно подтвердил полное число, включая сломанные.' } : {}) } } : {}),
       ...(diameter !== '' && !rack ? { tipDiameterMm: diameterFact(Number(diameter)) } : {}),
       ...(diameterMethod !== 'unknown' && !rack ? { tipDiameterMethod: diameterFact(diameterMethod as TipDiameterMethod) } : {}),
       ...(pitch !== '' && rack ? { transversePitchMm: fact(Number(pitch)) } : {}),
@@ -75,7 +78,7 @@ export function PhotoWizard({ onApply, onManual }: { onApply: (p: ApplyParams, s
       ...(shift !== '' ? { profileShift: fact(Number(shift)) } : {}),
       ...(standard ? { standardAddendum: fact(true) } : {}),
     };
-  }, [analysis, supported, kind, source, profile, teeth, confirmedTeeth, diameter, diameterMethod, pitch, beta, alpha, shift, standard, rack, helical, photoMeasurement]);
+  }, [analysis, supported, kind, source, profile, teeth, confirmedTeeth, damageHypothesisTransferred, diameter, diameterMethod, pitch, beta, alpha, shift, standard, rack, helical, photoMeasurement]);
   const invalidatePhotoMeasurement = () => {
     if (photoMeasurement) { setDiameter(''); setDiameterMethod('unknown'); }
     setPhotoMeasurement(null);
@@ -94,8 +97,18 @@ export function PhotoWizard({ onApply, onManual }: { onApply: (p: ApplyParams, s
     try {
       buildModelMesh({ ...defaultModel(patch.kind), ...patch });
       onApply(patch, 'Фото и подтверждённые исходные данные; модуль рассчитан без округления.', {
-        method: photoMeasurement ? 'confirmed-measurements-with-photo-scale-v3' : 'confirmed-measurements-v2', input, calculation: result.calculation, provenance: result.provenance,
+        method: analysis?.damageHypothesis ? 'confirmed-measurements-with-damage-hypothesis-v4' : photoMeasurement ? 'confirmed-measurements-with-photo-scale-v3' : 'confirmed-measurements-v2', input, calculation: result.calculation, provenance: result.provenance,
         ...(photoMeasurement ? { photoMeasurement: { ...photoMeasurement, sourceImage: imageSize?.source } } : {}),
+        ...(analysis ? { photoAnalysisEvidence: {
+          algorithm: analysis.diagnostics.algorithm, status: analysis.status, sourceImage: imageSize?.source,
+          workingImage: imageSize ? { width: imageSize.width, height: imageSize.height } : null,
+          coordinateSystem: 'working_image_pixels; origin=top-left; angle=clockwise-from-right',
+          centerPx: analysis.centerPx, outsideDiameterPx: analysis.outsideDiameterPx,
+          strictToothCandidate: analysis.toothCount, damageHypothesis: analysis.damageHypothesis, diagnostics: analysis.diagnostics,
+          hypothesisTransfer: { transferred: damageHypothesisTransferred, proposedFullToothCount: analysis.damageHypothesis?.toothCount ?? null,
+            independentlyConfirmedByUser: damageHypothesisTransferred && confirmedTeeth, confirmedFullToothCount: confirmedTeeth ? Number(teeth) : null },
+          warning: 'Сектора — ожидаемые зубцовые ячейки для осмотра, а не измеренные границы разрушения. Гипотеза не устанавливает профиль, модуль или пригодность детали.',
+        } } : {}),
         bodyDimensions: { widthMm: Number(width), ...(rack ? { rackBaseHeightMm: Number(body) } : internal ? { rimThicknessMm: Number(body) } : { boreMm: Number(body) }), source },
         reconstructionAssumptions: ['Утонение зуба принято 0; посадочные допуски не восстановлены.', 'Переходы у основания и технологические детали не измерены по фотографии.', ...(kind === 'herringbone' ? ['Равные половины шеврона, без центральной канавки.'] : [])],
       });
@@ -111,19 +124,29 @@ export function PhotoWizard({ onApply, onManual }: { onApply: (p: ApplyParams, s
     <p className="privacy-note">Фото обрабатывается на устройстве.</p>
     {busy && <p className="inline-status" role="status">Анализируем контур…</p>}
     {error && <p className="inline-error" role="alert">{error}</p>}
-    {analysis && <div className="photo-result"><span className="photo-result-title"><ScanLine size={17} />{analysis.toothCount ? 'Найдена периодичность контура' : 'Нужно уточнение'}</span>
+    {analysis && <div className="photo-result"><span className="photo-result-title"><ScanLine size={17} />{analysis.damageHypothesis ? 'Гипотеза при локальном повреждении' : analysis.toothCount ? 'Найдена периодичность контура' : 'Нужно уточнение'}</span>
       {analysis.toothCount && <strong>{analysis.toothCount}<small> предполагаемых зубьев</small></strong>}
+      {analysis.damageHypothesis && <>
+        <strong>{analysis.damageHypothesis.toothCount}<small> — возможное полное число зубьев</small></strong>
+        <p>С шаблоном согласуются {analysis.damageHypothesis.supportedTeeth} из {analysis.damageHypothesis.toothCount} ожидаемых участков ({Math.round(100 * analysis.damageHypothesis.visibleToothFraction)}%). Это гипотеза для {analysis.damageHypothesis.boundary === 'inner' ? 'внутреннего' : 'наружного'} контура, включая возможные утраченные зубья.</p>
+        <p>Разброс шага: {(100 * analysis.damageHypothesis.pitchScatterFraction).toFixed(2)}%; ошибка шаблона на сохранных участках: {(100 * analysis.damageHypothesis.templateErrorFraction).toFixed(1)}% его высоты. Это не допуск детали и не вероятность.</p>
+        {image && imageSize && <DamagePreview image={image} width={imageSize.width} height={imageSize.height} analysis={analysis} />}
+        <button type="button" className="secondary-button full" onClick={() => { setTeeth(String(analysis.damageHypothesis!.toothCount)); setConfirmedTeeth(false); setDamageHypothesisTransferred(true); }}>
+          Подставить гипотезу {analysis.damageHypothesis.toothCount}
+        </button>
+        {damageHypothesisTransferred && <p role="status">Гипотеза перенесена. Отдельно подтвердите полное число зубьев, включая сломанные, по детали, чертежу или данным ответного колеса.</p>}
+      </>}
       <p>{analysis.candidateTypes[0]?.evidence || 'По этому снимку нельзя уверенно определить деталь.'}</p>
-      <details><summary>Что удалось определить</summary><ul>{analysis.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul><p>Качество сигнала: {Math.round(analysis.confidence * 100)}/100. Это оценка контура, а не вероятность правильной детали.</p></details>
+      <details><summary>Что удалось определить</summary><ul>{[...analysis.warnings, ...(analysis.damageHypothesis?.evidence ?? [])].map((w, i) => <li key={i}>{w}</li>)}</ul><p>Качество сигнала: {Math.round(analysis.confidence * 100)}/100. Это оценка контура, а не вероятность правильной детали.</p></details>
     </div>}
     <div className="expert-heading"><span className="section-number">?</span><h3>Уточним как инженер</h3></div>
-    <Choice id="photo-type" label="1. Тип по осмотру детали" value={kind} onChange={v => { setKind(v); setDiameter(''); setPitch(''); setDiameterMethod('unknown'); setBeta(''); setBody(''); setStandard(false); setSymmetric(false); setPhotoMeasurement(null); }} options={{ unknown: 'Пока не знаю', ...Object.fromEntries(Object.entries(modelNames).filter(([key]) => key !== 'worm' && key !== 'cycloidal')), other: 'Циклоидальный, конус, червяк или другой тип' }} />
+    <Choice id="photo-type" label="1. Тип по осмотру детали" value={kind} onChange={v => { setKind(v); setDiameter(''); setPitch(''); setDiameterMethod('unknown'); setBeta(''); setBody(''); setStandard(false); setSymmetric(false); setPhotoMeasurement(null); setConfirmedTeeth(false); }} options={{ unknown: 'Пока не знаю', ...Object.fromEntries(inferredKinds.map(key => [key, modelNames[key]])), other: 'Циклоидальный, конус, червяк или другой тип' }} />
     {!supported && <div className="expert-note"><p>{kind === 'other' ? 'Нужны тип профиля, размеры и данные ответной детали. Отдельный ZA-червяк можно построить в ручном режиме.' : 'Круглый торцевой контур не отличает прямые зубья от косых и шевронных. Осмотрите боковую поверхность; внутренние зубья направлены к центру кольца.'}</p><button className="inline-link" onClick={onManual}>Ручной режим <ArrowRight size={14} /></button></div>}
     <Choice id="photo-profile" label="2. Профиль по чертежу или измерениям" value={profile} onChange={setProfile} options={{ unknown: 'Не подтверждён', involute: 'Эвольвентный подтверждён', other: 'Циклоидальный или другой' }} />
     {image && imageSize && supported && !rack && <PhotoScale key={`${imageSize.id}-${kind}`} image={image} width={imageSize.width} height={imageSize.height} internal={internal} isApplied={photoMeasurement !== null}
       onInvalidated={invalidatePhotoMeasurement} onMeasured={measurement => { setPhotoMeasurement(measurement); setDiameter(String(measurement.result.diameterMm)); setDiameterMethod('tip_circle'); }} />}
     <div className="input-grid photo-inputs">
-      <Measure label={rack ? 'Число зубьев участка' : 'Полное число зубьев'} value={teeth} set={v => { setTeeth(v); setConfirmedTeeth(false); }} placeholder="24" />
+      <Measure label={rack ? 'Число зубьев участка' : 'Полное число зубьев'} value={teeth} set={v => { setTeeth(v); setConfirmedTeeth(false); setDamageHypothesisTransferred(false); }} placeholder="24" />
       {rack ? <Measure label="Торцевой шаг, мм" value={pitch} set={setPitch} placeholder="6,28319" /> : <Measure label={internal ? 'Внутренний da, мм' : 'Диаметр вершин, мм'} value={diameter} set={setManualDiameter} placeholder="52" />}
     </div>
     <label className="check-row"><Checkbox checked={confirmedTeeth} onCheckedChange={v => setConfirmedTeeth(v === true)} /><span>Число зубьев проверено по детали, включая повреждённые.</span></label>
@@ -143,6 +166,34 @@ export function PhotoWizard({ onApply, onManual }: { onApply: (p: ApplyParams, s
     <button className="primary-button full photo-spaced" onClick={apply} disabled={!ready || busy}><Check size={16} /> Применить параметры</button>
     {!ready && <p className="field-help">Для построения нужны подтверждённый профиль, исходные размеры и число зубьев. Если данные неизвестны, сохраните неопределённость и измерьте ответную деталь.</p>}
   </div>;
+}
+function DamagePreview({ image, width, height, analysis }: { image: string; width: number; height: number; analysis: PhotoAnalysis }) {
+  const hypothesis = analysis.damageHypothesis, center = analysis.centerPx;
+  if (!hypothesis || !center || !analysis.outsideDiameterPx) return null;
+  const radius = analysis.outsideDiameterPx * .52;
+  return <details>
+    <summary>Показать участки для проверки</summary>
+    <svg viewBox={`0 0 ${width} ${height}`} width={width} height={height} role="img" aria-label="Ожидаемые зубцовые ячейки с отклонениями от шаблона"
+      style={{ display: 'block', width: '100%', height: 'auto', margin: '10px 0', borderRadius: 5 }}>
+      <image href={image} width={width} height={height} />
+      {hypothesis.damagedSectors.map((sector, index) => {
+        const start = sector.startDeg * Math.PI / 180, end = sector.endDeg * Math.PI / 180;
+        const span = (sector.endDeg - sector.startDeg + 360) % 360;
+        const p = { x: center.x + radius * Math.cos(start), y: center.y + radius * Math.sin(start) };
+        const q = { x: center.x + radius * Math.cos(end), y: center.y + radius * Math.sin(end) };
+        const path = `M ${center.x} ${center.y} L ${p.x} ${p.y} A ${radius} ${radius} 0 ${span > 180 ? 1 : 0} 1 ${q.x} ${q.y} Z`;
+        const labelAngle = (sector.startDeg + span / 2) * Math.PI / 180;
+        return <g key={index}>
+          <path d={path} fill="#ff9b2240" stroke="#ed7d00" strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
+          <text x={center.x + radius * .72 * Math.cos(labelAngle)} y={center.y + radius * .72 * Math.sin(labelAngle)} textAnchor="middle" dominantBaseline="central"
+            fontSize={Math.max(width, height) / 22} fontWeight={700} fill="#fff" stroke="#723700" strokeWidth={Math.max(width, height) / 200} paintOrder="stroke">{index + 1}</text>
+        </g>;
+      })}
+    </svg>
+    <p>Подсвечены ожидаемые зубцовые ячейки, а не точные границы поломки. Осмотрите их; перекрытие или специальная форма могут выглядеть так же.</p>
+    <ul>{hypothesis.damagedSectors.map((sector, index) => <li key={index}>{index + 1}: {sector.startDeg.toFixed(1)}°–{sector.endDeg.toFixed(1)}°{sector.wrapsZero ? ' через 0°' : ''}; ячеек: {sector.estimatedToothCells}.</li>)}</ul>
+    <p>0° направлен вправо; угол растёт по часовой стрелке.</p>
+  </details>;
 }
 function Measure({ label, value, set, placeholder }: { label: string; value: string; set: (v: string) => void; placeholder: string }) {
   return <label className="number-field">{label}<input aria-label={label} type="number" step="any" value={value} onChange={e => set(e.target.value)} placeholder={placeholder} /></label>;

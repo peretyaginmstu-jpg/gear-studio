@@ -8,14 +8,33 @@ export type PhotoCandidateType = 'external_circular' | 'internal_ring' | 'linear
 export type ExpertQuestion = {
   id: string; label: string; reason: string; options?: string[];
 };
+export type PhotoDamageHypothesis = {
+  status: 'requires_independent_confirmation';
+  method: 'robust-period-template-v1';
+  /** Hypothesis of the complete count, never an observed or confirmed count. */
+  toothCount: number;
+  boundary: 'outer' | 'inner';
+  supportedTeeth: number;
+  /** Fraction of expected tooth cells matching the template, not a visibility probability. */
+  visibleToothFraction: number;
+  candidatePitchDeg: number;
+  /** RMS deviation of observed supported-tooth spacings / their expected spacings. */
+  pitchScatterFraction: number;
+  /** RMS template residual on supported cells / median template height. */
+  templateErrorFraction: number;
+  damagedSectors: { startDeg: number; endDeg: number; wrapsZero: boolean; estimatedToothCells: number; evidence: string }[];
+  evidence: string[];
+};
 export type PhotoAnalysis = {
   /** Even a good silhouette is a proposal, never engineering acceptance. */
-  status: 'proposal_requires_confirmation' | 'manual_required';
+  status: 'proposal_requires_confirmation' | 'damage_hypothesis_requires_confirmation' | 'manual_required';
   candidateTypes: { type: PhotoCandidateType; confidence: number; evidence: string }[];
   /** Heuristic signal quality, not a calibrated probability of correctness. */
   confidence: number;
   /** Null unless all image gates and periodicity gates pass. User must confirm. */
   toothCount: number | null;
+  /** Separate, incomplete evidence from mostly repeated contours with local material deficits. */
+  damageHypothesis: PhotoDamageHypothesis | null;
   /** Pixel diameter in the ORIGINAL image; not a dimension in mm. */
   outsideDiameterPx: number | null;
   centerPx: { x: number; y: number } | null;
@@ -23,7 +42,7 @@ export type PhotoAnalysis = {
   warnings: string[];
   expertQuestions: ExpertQuestion[];
   diagnostics: {
-    algorithm: 'silhouette-radial-v1'; processedWidth: number; processedHeight: number;
+    algorithm: 'silhouette-radial-v2-damage'; processedWidth: number; processedHeight: number;
     contrast: number; aspectRatio: number | null; clipped: boolean;
     backgroundSpread: number; foregroundFraction: number;
     outerPeriodicity: number; innerPeriodicity: number;
@@ -107,7 +126,8 @@ function largestComponent(raw: Uint8Array, w: number, h: number) {
   return { mask, count: largest.length, totalForeground, minX, maxX, minY, maxY, sx, sy };
 }
 
-type PeriodResult = { toothCount: number | null; score: number; amplitude: number; bestFrequency: number | null };
+type SpectralPeak = { k: number; power: number; phase: number };
+type PeriodResult = { toothCount: number | null; score: number; amplitude: number; bestFrequency: number | null; peaks: SpectralPeak[] };
 function circularPeriod(profile: Float64Array): PeriodResult {
   const n = profile.length, mean = average(profile);
   const residual = Float64Array.from(profile, x => x - mean);
@@ -120,16 +140,16 @@ function circularPeriod(profile: Float64Array): PeriodResult {
   }
   const totalVariance = deviation(residual) ** 2;
   const amplitude = quantile(Array.from(residual), .95) - quantile(Array.from(residual), .05);
-  if (amplitude < Math.max(2.5, mean * .012) || totalVariance < .7) return { toothCount: null, score: 0, amplitude, bestFrequency: null };
+  if (amplitude < Math.max(2.5, mean * .012) || totalVariance < .7) return { toothCount: null, score: 0, amplitude, bestFrequency: null, peaks: [] };
   const maxZ = Math.min(160, Math.floor(2 * Math.PI * mean / 8));
-  const powers: { k: number; power: number; phase: number }[] = [];
+  const powers: SpectralPeak[] = [];
   for (let k = 6; k <= maxZ; k++) {
     let a = 0, b = 0;
     for (let i = 0; i < n; i++) { const t = 2 * Math.PI * k * i / n; a += residual[i] * Math.cos(t); b += residual[i] * Math.sin(t); }
     a *= 2 / n; b *= 2 / n; powers.push({ k, power: (a * a + b * b) / 2, phase: Math.atan2(b, a) });
   }
   powers.sort((a, b) => b.power - a.power);
-  const best = powers[0]; if (!best) return { toothCount: null, score: 0, amplitude, bestFrequency: null };
+  const best = powers[0]; if (!best) return { toothCount: null, score: 0, amplitude, bestFrequency: null, peaks: [] };
   const explained = clamp(best.power / totalVariance);
   // A second non-harmonic frequency indicates damage, competing objects or noise.
   const alternative = powers.find(p => p.k !== best.k && p.k % best.k !== 0)?.power ?? 0;
@@ -155,7 +175,167 @@ function circularPeriod(profile: Float64Array): PeriodResult {
   const score = clamp(.4 * explained + .35 * repeatability + .25 * distinctness);
   const minimumRelativeHeight = Math.min(...toothHeights) / Math.max(quantile(toothHeights, .5), 1e-9);
   const valid = explained > .35 && repeatability > .75 && distinctness > .7 && heightCV < .22 && minimumRelativeHeight > .5;
-  return { toothCount: valid ? best.k : null, score: valid ? score : Math.min(score, .49), amplitude, bestFrequency: best.k };
+  return { toothCount: valid ? best.k : null, score: valid ? score : Math.min(score, .49), amplitude, bestFrequency: best.k,
+    peaks: powers.slice(0, 6).filter(peak => peak.power >= best.power * .2) };
+}
+
+/**
+ * A second, deliberately separate route for a predominantly intact contour.
+ * A spectrum only proposes periods. Median-folded tooth templates, individual
+ * cell residuals, observed peak spacings and the sign/locality of lost material
+ * must independently support one unambiguous period. Image gates are unchanged.
+ */
+type DamagePeriodResult = { hypothesis: PhotoDamageHypothesis; centerShift: { x: number; y: number } };
+function recenteredRadialProfile(profile: Float64Array, dx: number, dy: number): Float64Array | null {
+  const tau = 2 * Math.PI, count = profile.length;
+  const points = Array.from(profile, (radius, index) => {
+    const angle = index * tau / count, x = radius * Math.cos(angle) - dx, y = radius * Math.sin(angle) - dy;
+    return { x, y, angle: (Math.atan2(y, x) + tau) % tau, radius: Math.hypot(x, y) };
+  });
+  // Do not sort a folded/re-entrant contour into an invented one-ray boundary.
+  // The corrected center must keep every sampled edge angularly forward.
+  if (points.some((point, index) => {
+    const next = points[(index + 1) % count];
+    return point.x * next.y - point.y * next.x <= 0;
+  })) return null;
+  points.sort((a, b) => a.angle - b.angle);
+  const wrapped = [{ ...points[count - 1], angle: points[count - 1].angle - tau }, ...points, { ...points[0], angle: points[0].angle + tau }];
+  const result = new Float64Array(count); let segment = 0;
+  for (let index = 0; index < count; index++) {
+    const angle = index * tau / count;
+    while (wrapped[segment + 1].angle < angle) segment++;
+    const a = wrapped[segment], b = wrapped[segment + 1];
+    // Intersect the new ray with the sampled contour chord. This adjusts both
+    // angle and radius; merely removing a sinusoidal radius does not fix phase.
+    result[index] = a.radius * b.radius * Math.sin(b.angle - a.angle)
+      / (b.radius * Math.sin(b.angle - angle) + a.radius * Math.sin(angle - a.angle));
+  }
+  return result;
+}
+function damagedPeriod(profile: Float64Array, spectral: PeriodResult, boundary: 'outer' | 'inner', refineCenter = true): DamagePeriodResult | null {
+  const n = profile.length, bins = 40, sign = boundary === 'outer' ? 1 : -1;
+  const sample = (index: number) => {
+    const wrapped = ((index % n) + n) % n, lower = Math.floor(wrapped), fraction = wrapped - lower;
+    return sign * (profile[lower] * (1 - fraction) + profile[(lower + 1) % n] * fraction);
+  };
+  const candidates: DamagePeriodResult[] = [];
+  for (const peak of spectral.peaks) {
+    const z = peak.k, period = n / z, phase = peak.phase + (sign < 0 ? Math.PI : 0);
+    const center = phase / (2 * Math.PI) * period;
+    const rawCells: number[][] = [], baselineSamples: { angle: number; value: number }[] = [];
+    for (let tooth = 0; tooth < z; tooth++) {
+      const raw = Array.from({ length: bins }, (_, bin) => sample(center + (tooth + bin / (bins - 1) - .5) * period));
+      const left = quantile(raw.slice(0, 4), .5), right = quantile(raw.slice(-4), .5);
+      rawCells.push(raw); baselineSamples.push({ angle: (center + tooth * period) * 2 * Math.PI / n, value: (left + right) / 2 });
+    }
+    // Center/bounding-box error gives a slow first-harmonic baseline. Fit it
+    // from the least-deviating 70% of cell edges, without normalizing each
+    // damaged cell to its own low edge (which would hide missing fragments).
+    let coefficients = [quantile(baselineSamples.map(point => point.value), .5), 0, 0];
+    const predict = (angle: number) => coefficients[0] + coefficients[1] * Math.cos(angle) + coefficients[2] * Math.sin(angle);
+    for (let iteration = 0; iteration < 5; iteration++) {
+      const retained = baselineSamples.map(point => ({ ...point, error: Math.abs(point.value - predict(point.angle)) }))
+        .sort((a, b) => a.error - b.error).slice(0, Math.max(6, Math.ceil(z * .7)));
+      const matrix = Array.from({ length: 3 }, () => [0, 0, 0, 0]);
+      for (const point of retained) {
+        const row = [1, Math.cos(point.angle), Math.sin(point.angle)];
+        for (let i = 0; i < 3; i++) { for (let j = 0; j < 3; j++) matrix[i][j] += row[i] * row[j]; matrix[i][3] += row[i] * point.value; }
+      }
+      let solvable = true;
+      for (let column = 0; column < 3; column++) {
+        let pivot = column;
+        for (let row = column + 1; row < 3; row++) if (Math.abs(matrix[row][column]) > Math.abs(matrix[pivot][column])) pivot = row;
+        if (Math.abs(matrix[pivot][column]) < 1e-8) { solvable = false; break; }
+        [matrix[column], matrix[pivot]] = [matrix[pivot], matrix[column]];
+        const divisor = matrix[column][column];
+        for (let j = column; j < 4; j++) matrix[column][j] /= divisor;
+        for (let row = 0; row < 3; row++) if (row !== column) {
+          const factor = matrix[row][column];
+          for (let j = column; j < 4; j++) matrix[row][j] -= factor * matrix[column][j];
+        }
+      }
+      if (solvable) coefficients = matrix.map(row => row[3]);
+    }
+    const dx = coefficients[1] / sign, dy = coefficients[2] / sign, displacement = Math.hypot(dx, dy);
+    if (refineCenter && peak === spectral.peaks[0] && displacement > .3 && displacement < average(profile) * .04) {
+      const recentered = recenteredRadialProfile(profile, dx, dy);
+      if (recentered && Array.from(recentered).every(value => Number.isFinite(value) && value > 0)) {
+        const revised = damagedPeriod(recentered, circularPeriod(recentered), boundary, false);
+        if (revised?.hypothesis.toothCount === z) { candidates.push({ hypothesis: revised.hypothesis, centerShift: { x: dx, y: dy } }); continue; }
+      }
+    }
+    const cells = rawCells.map((raw, tooth) => raw.map((radius, bin) =>
+      radius - predict((center + (tooth + bin / (bins - 1) - .5) * period) * 2 * Math.PI / n)));
+    const template = Array.from({ length: bins }, (_, bin) => quantile(cells.map(cell => cell[bin]), .5));
+    const base = quantile(template, .05), height = quantile(template, .95) - base;
+    if (height < Math.max(2.5, average(profile) * .012)) continue;
+    // A doubled/subharmonic period may have two peaks per cell. It is not a
+    // one-tooth template even if a Fourier harmonic happens to be prominent.
+    let peaks = 0, above = false;
+    for (const value of template) {
+      const current = value > base + .45 * height;
+      if (current && !above) peaks++;
+      above = current;
+    }
+    if (peaks !== 1 || template[0] > base + .3 * height || template[bins - 1] > base + .3 * height) continue;
+    const supported: { index: number; offset: number; error: number }[] = [], damaged: number[] = [];
+    let unexplained = false;
+    for (let tooth = 0; tooth < z; tooth++) {
+      const cell = cells[tooth], errors = cell.map((value, bin) => value - template[bin]);
+      const rms = Math.sqrt(average(errors.map(value => value ** 2))) / height;
+      const actualHeight = quantile(cell, .95) - quantile(cell, .05);
+      let weight = 0, weightedPosition = 0;
+      for (let bin = 0; bin < bins; bin++) {
+        const amount = Math.max(0, cell[bin] - base - .55 * height);
+        weight += amount; weightedPosition += amount * (bin / (bins - 1) - .5);
+      }
+      if (rms <= .16 && actualHeight >= .72 * height && actualHeight <= 1.28 * height && weight > .05 * height) {
+        supported.push({ index: tooth, offset: weightedPosition / weight, error: rms });
+      } else {
+        const deficit = average(errors.map(value => Math.max(0, -value))) / height;
+        const excess = average(errors.map(value => Math.max(0, value))) / height;
+        // A local downward mismatch has to dominate; arbitrary shape changes,
+        // extra material, shadows and alternate tooth shapes are not filled in.
+        if (deficit >= .08 && excess <= .04 && deficit >= 3 * excess) damaged.push(tooth);
+        else unexplained = true;
+      }
+    }
+    if (unexplained || damaged.length < 1 || damaged.length > 4 || supported.length < 6 || supported.length / z < .75) continue;
+    const spacingErrors = supported.map((item, i) => {
+      const next = supported[(i + 1) % supported.length], steps = (next.index - item.index + z) % z;
+      return (next.offset - item.offset) / steps;
+    });
+    const scatter = Math.sqrt(average(spacingErrors.map(value => value ** 2)));
+    if (scatter > .06 || Math.max(...spacingErrors.map(Math.abs)) > .15) continue;
+    const damagedSet = new Set(damaged), sectors: PhotoDamageHypothesis['damagedSectors'] = [];
+    const firstGood = supported[0].index;
+    const normalizeAngle = (angle: number) => ((angle % 360) + 360) % 360;
+    let start: number | null = null;
+    for (let step = 1; step <= z + 1; step++) {
+      const index = firstGood + step;
+      if (step <= z && damagedSet.has(index % z)) { if (start === null) start = index; }
+      else if (start !== null) {
+        const length = index - start, startDeg = normalizeAngle((center / period + start - .5) * 360 / z);
+        const unwrappedEnd = startDeg + length * 360 / z;
+        sectors.push({ startDeg, endDeg: normalizeAngle(unwrappedEnd), wrapsZero: unwrappedEnd >= 360, estimatedToothCells: length,
+          evidence: 'Локальный дефицит контура относительно медианного шаблона; причина и границы повреждения требуют осмотра.' });
+        start = null;
+      }
+    }
+    if (sectors.length > 3) continue;
+    const templateErrorFraction = Math.sqrt(average(supported.map(item => item.error ** 2)));
+    candidates.push({ centerShift: { x: 0, y: 0 }, hypothesis: { status: 'requires_independent_confirmation', method: 'robust-period-template-v1', toothCount: z, boundary,
+      supportedTeeth: supported.length, visibleToothFraction: supported.length / z, candidatePitchDeg: 360 / z,
+      pitchScatterFraction: scatter, templateErrorFraction, damagedSectors: sectors,
+      evidence: [
+        `${supported.length} из ${z} ожидаемых зубцовых участков согласуются с общим шаблоном.`,
+        `Предполагаемый угловой шаг ${(360 / z).toFixed(3)}°; среднеквадратичный разброс шага ${(scatter * 100).toFixed(2)}%.`,
+        `${damaged.length} участка имеют локальный дефицит материала относительно шаблона; это гипотеза повреждения или перекрытия, а не распознанный факт.`,
+        'Полное число зубьев, включая утраченные, нужно подтвердить по детали, чертежу или ответному колесу.',
+      ] } });
+  }
+  // Competing periods remain unresolved instead of choosing the nicest score.
+  return candidates.length === 1 ? candidates[0] : null;
 }
 
 function rackEvidence(mask: Uint8Array, w: number, box: { minX: number; maxX: number; minY: number; maxY: number }) {
@@ -222,9 +402,9 @@ export function analyzeGearImage(image: ImageDataLike): PhotoAnalysis {
   for (let i = 0; i < object.mask.length; i++) if (object.mask[i]) foregroundDistance.push(distance[i]);
   const contrast = quantile(foregroundDistance, .5);
   const result: PhotoAnalysis = {
-    status: 'manual_required', candidateTypes: [], confidence: 0, toothCount: null,
+    status: 'manual_required', candidateTypes: [], confidence: 0, toothCount: null, damageHypothesis: null,
     outsideDiameterPx: null, centerPx: null, moduleMm: null, warnings, expertQuestions: getExpertQuestions(),
-    diagnostics: { algorithm: 'silhouette-radial-v1', processedWidth: w, processedHeight: h, contrast,
+    diagnostics: { algorithm: 'silhouette-radial-v2-damage', processedWidth: w, processedHeight: h, contrast,
       aspectRatio, clipped, backgroundSpread, foregroundFraction, outerPeriodicity: 0, innerPeriodicity: 0, ungatedToothCandidate: null },
   };
   if (object.count < 200 || foregroundFraction < .015 || foregroundFraction > .85) {
@@ -262,7 +442,7 @@ export function analyzeGearImage(image: ImageDataLike): PhotoAnalysis {
   const meanR = average(outer);
   if (meanR < 40) warnings.push('Слишком мало пикселей на контуре для надёжного подсчёта зубьев.');
   const outerResult = circularPeriod(outer);
-  const innerResult = innerRays === n && average(inner) > meanR * .35 ? circularPeriod(inner) : { toothCount: null, score: 0, amplitude: 0, bestFrequency: null };
+  const innerResult: PeriodResult = innerRays === n && average(inner) > meanR * .35 ? circularPeriod(inner) : { toothCount: null, score: 0, amplitude: 0, bestFrequency: null, peaks: [] };
   result.diagnostics.outerPeriodicity = outerResult.score; result.diagnostics.innerPeriodicity = innerResult.score;
   const internalCandidate = innerResult.toothCount !== null && outerResult.toothCount === null;
   const candidate = internalCandidate ? innerResult : outerResult;
@@ -277,7 +457,21 @@ export function analyzeGearImage(image: ImageDataLike): PhotoAnalysis {
   if (centroidOffset >= .04) warnings.push('Силуэт несимметричен: возможны перекрытие, повреждение зубьев, ступица или тень.');
   if (imageGate && circularGate) {
     result.outsideDiameterPx = 2 * quantile(Array.from(outer), .995) * (sx + sy) / 2;
-    if (candidate.toothCount !== null) {
+    const outerDamage = innerResult.toothCount === null ? damagedPeriod(outer, outerResult, 'outer') : null;
+    const innerDamage = outerResult.amplitude < Math.max(2.5, meanR * .012) ? damagedPeriod(inner, innerResult, 'inner') : null;
+    const damagedResult = outerDamage && innerDamage ? null : outerDamage ?? innerDamage;
+    if (damagedResult) {
+      const damage = damagedResult.hypothesis;
+      const type: PhotoCandidateType = damage.boundary === 'inner' ? 'internal_ring' : 'external_circular';
+      const score = Math.min(.8, damage.visibleToothFraction * (1 - damage.templateErrorFraction) * (1 - damage.pitchScatterFraction));
+      result.status = 'damage_hypothesis_requires_confirmation'; result.damageHypothesis = damage; result.confidence = score;
+      result.centerPx = { x: (cx + damagedResult.centerShift.x + .5) * sx, y: (cy + damagedResult.centerShift.y + .5) * sy };
+      result.candidateTypes.push({ type, confidence: score, evidence: 'Большая часть контура повторяет один шаблон; локальные участки имеют дефицит материала. Полное число зубьев — отдельная гипотеза.' });
+      result.expertQuestions = getExpertQuestions(type).map(question => question.id === 'tooth_count'
+        ? { ...question, label: `Подтвердите полное число зубьев, включая сломанные: гипотеза ${damage.toothCount}.`,
+          reason: 'Сохранные участки поддерживают этот угловой шаг; утраченные зубья не наблюдаются и не считаются подтверждёнными.' } : question);
+      warnings.push('Есть локальные отклонения, похожие на утрату материала или перекрытие. Число зубьев сохранено отдельно как гипотеза; автоматически оно не подставлено.');
+    } else if (candidate.toothCount !== null) {
       const type: PhotoCandidateType = internalCandidate ? 'internal_ring' : 'external_circular';
       const score = clamp(candidate.score * .94, 0, .94);
       result.status = 'proposal_requires_confirmation'; result.confidence = score; result.toothCount = candidate.toothCount;

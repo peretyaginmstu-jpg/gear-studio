@@ -1,16 +1,19 @@
 import { buildGearMesh, defaultGearParams, type GearKind, type GearMesh, type GearParams, type MeshQuality } from './gearMath.ts';
 import { buildWormMesh, type WormParams, type WormMesh } from './wormGeometry.ts';
 import { buildCycloidalMesh, type CycloidalParams, type CycloidalMesh } from './cycloidalGeometry.ts';
+import { buildBevelMesh, type BevelParams, type BevelMesh } from './bevelGeometry.ts';
 
-export type ModelKind = GearKind | 'worm' | 'cycloidal';
+export type ModelKind = GearKind | 'worm' | 'cycloidal' | 'bevel';
 export type ModelParams = Omit<GearParams, 'kind'> & {
   kind: ModelKind;
   wormStarts?: number;
   wormDiameterFactor?: number;
   wormHand?: 'right' | 'left';
   cycloidRollingRadius?: number;
+  bevelMateTeeth?: number;
+  bevelShaftAngleDeg?: number;
 };
-export type ModelMesh = GearMesh | WormMesh | CycloidalMesh;
+export type ModelMesh = GearMesh | WormMesh | CycloidalMesh | BevelMesh;
 export const modelNames: Record<ModelKind, string> = {
   spur: 'Прямозубое колесо',
   helical: 'Косозубое колесо',
@@ -21,6 +24,7 @@ export const modelNames: Record<ModelKind, string> = {
   'helical-rack': 'Косозубая рейка',
   worm: 'Червяк ZA',
   cycloidal: 'Циклоидальное колесо',
+  bevel: 'Коническое прямозубое',
 };
 export const isRackKind = (kind: ModelKind) => kind === 'rack' || kind === 'helical-rack';
 export const isInternalKind = (kind: ModelKind) => kind === 'internal' || kind === 'internal-helical';
@@ -30,29 +34,41 @@ export function defaultModel(kind: ModelKind = 'spur'): ModelParams {
   return {
     ...defaultGearParams,
     kind,
-    teeth: isInternalKind(kind) ? 48 : isRackKind(kind) ? 10 : 24,
+    teeth: kind === 'bevel' ? 40 : isInternalKind(kind) ? 48 : isRackKind(kind) ? 10 : 24,
     width: kind === 'worm' ? 32 : 10,
-    helixAngleDeg: kind === 'cycloidal' ? 0 : defaultGearParams.helixAngleDeg,
+    helixAngleDeg: isHelicalKind(kind) ? defaultGearParams.helixAngleDeg : 0,
     wormStarts: 1,
     wormDiameterFactor: 10,
     wormHand: 'right',
+    ...(kind === 'bevel' ? { bevelMateTeeth: 40, bevelShaftAngleDeg: 90 } : {}),
   };
 }
 
 export function buildModelMesh(input: ModelParams, quality: MeshQuality = {}): ModelMesh {
   // Each independent kernel receives only its own parameters.
-  const { wormStarts, wormDiameterFactor, wormHand, cycloidRollingRadius, ...gear } = input;
+  const { wormStarts, wormDiameterFactor, wormHand, cycloidRollingRadius, bevelMateTeeth, bevelShaftAngleDeg, ...gear } = input;
   if (input.kind === 'worm') return buildWormMesh({ ...gear, wormStarts, wormDiameterFactor, wormHand } as WormParams, quality);
   if (input.kind === 'cycloidal') return buildCycloidalMesh({ ...gear, cycloidRollingRadius } as CycloidalParams, quality);
+  if (input.kind === 'bevel') return buildBevelMesh({ ...gear, bevelMateTeeth, bevelShaftAngleDeg } as BevelParams, quality);
   return buildGearMesh(gear as GearParams, quality);
 }
 
 /** Public reports use null for quantities that do not belong to that tooth system. */
 export function modelDimensionsForReport(mesh: ModelMesh) {
+  if ('bevelDimensions' in mesh) return { ...mesh.dimensions, baseDiameter: null, basePitch: null,
+    minimumProfileShift: null, virtualTeeth: null };
   if ('cycloidalDimensions' in mesh) return { ...mesh.dimensions,
     normalPressureAngleDeg: null, transversePressureAngleDeg: null, baseDiameter: null,
     basePitch: null, minimumProfileShift: null, virtualTeeth: null };
   if ('wormDimensions' in mesh) return { ...mesh.dimensions, baseDiameter: null, basePitch: null,
     minimumProfileShift: null, virtualTeeth: null };
   return mesh.dimensions;
+}
+
+/** Spatial end data belongs to the bevel report, not to a flattened profile. */
+export function modelSpatialGeometryForReport(mesh: ModelMesh) {
+  if ('bevelDimensions' in mesh) return { coordinateSystem: 'world-mm; large-flat-end-at-z0; pitch-axis-minus-z',
+    sourceToWorld: mesh.bevelDimensions.sourceToWorld, apex: mesh.bevelDimensions.apex,
+    outerEndContour: mesh.profile.outerEndContour, innerEndContour: mesh.profile.innerEndContour };
+  return null;
 }

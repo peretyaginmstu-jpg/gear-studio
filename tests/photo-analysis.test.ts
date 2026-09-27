@@ -42,6 +42,7 @@ function accepts(name: string, options: ShapeOptions, count: number, type = 'ext
   const r = analyzeGearImage(synthetic(options));
   rows.push({ name, expected: count, found: r.toothCount, type: r.candidateTypes[0].type, confidence: +r.confidence.toFixed(3), diameter: r.outsideDiameterPx });
   assert.equal(r.toothCount, count, `${name}: ${JSON.stringify(r)}`);
+  assert.equal(r.damageHypothesis, null, `${name}: intact contour must not invent damage`);
   assert.equal(r.candidateTypes[0].type, type, name);
   assert.equal(r.moduleMm, null, name);
   assert.ok(r.expertQuestions.some(q => q.id === 'outside_diameter'), name);
@@ -52,6 +53,7 @@ function refuses(name: string, options: ShapeOptions) {
   rows.push({ name, expected: null, found: r.toothCount, type: r.candidateTypes[0].type, warnings: r.warnings.slice(2) });
   assert.equal(r.toothCount, null, `${name}: ${JSON.stringify(r)}`);
   assert.equal(r.status, 'manual_required', name);
+  assert.equal(r.damageHypothesis, null, name);
 }
 for (const z of [8, 12, 20, 24, 40, 72]) accepts(`external z=${z}`, { z }, z);
 accepts('white on dark', { z: 30, fg: [250, 250, 250], bg: [10, 10, 10] }, 30);
@@ -64,7 +66,11 @@ refuses('tilted gear rotated 45 degrees', { z: 24, sy: .75, rotation: Math.PI / 
 refuses('clipped gear', { z: 24, cx: 110 });
 refuses('low contrast', { z: 24, fg: [220, 220, 220] });
 refuses('small image feature', { z: 24, radius: 25, depth: 4 });
-refuses('missing tooth', { z: 24, damaged: true });
+const damaged = analyzeGearImage(synthetic({ z: 24, damaged: true }));
+assert.equal(damaged.toothCount, null, 'a missing tooth is never an observed complete count');
+assert.equal(damaged.status, 'damage_hypothesis_requires_confirmation');
+assert.equal(damaged.damageHypothesis?.toothCount, 24);
+rows.push({ name: 'missing tooth', strictCount: damaged.toothCount, separateHypothesis: damaged.damageHypothesis?.toothCount });
 refuses('busy background', { z: 24, noisyBorder: true });
 // Separate substantial item has >15% of segmented foreground, so multiobject gate fails.
 refuses('two large foreground objects', { z: 24, radius: 105, secondObject: true });

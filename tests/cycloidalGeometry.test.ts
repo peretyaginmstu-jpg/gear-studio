@@ -187,7 +187,7 @@ test('unreachable roots, crossed teeth, unsupported shifts and excessive meshes 
 
 test('model adapter dispatches cycloidal separately and removes unrelated kernel settings', () => {
   const input = defaultModel('cycloidal'), mesh = buildModelMesh(input);
-  assert.equal(Object.keys(modelNames).length, 9); assert.equal(input.helixAngleDeg, 0);
+  assert.equal(Object.keys(modelNames).length, 10); assert.equal(input.helixAngleDeg, 0);
   assert.ok('cycloidalDimensions' in mesh); assert.equal(mesh.params.kind, 'cycloidal');
   assert.ok(!('wormHand' in mesh.params)); assert.ok(!('wormStarts' in mesh.params));
   if ('cycloidalDimensions' in mesh) close(mesh.cycloidalDimensions.rollingRadius, 4);

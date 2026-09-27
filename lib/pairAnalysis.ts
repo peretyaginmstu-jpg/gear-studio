@@ -45,7 +45,7 @@ const emptyDimensions = (): PairDimensions => ({
   transverseBacklashMm: null, ratio: null, minimumRadialClearanceMm: null, effectiveFaceWidthMm: null,
 });
 
-/** An explicit adapter prevents worm/cycloid settings entering the involute kernel. */
+/** An explicit adapter prevents worm/cycloid/bevel settings entering the involute kernel. */
 function gearParams(p: ModelParams): GearParams {
   return {
     kind: p.kind as GearKind, teeth: p.teeth, module: p.module,
@@ -104,7 +104,7 @@ export function analyzeGearPair({ first, second, centerDistanceMm }: PairInput):
     return report;
   };
   if (!supported.includes(first.kind) || !supported.includes(second.kind))
-    return unsupportedPair('Расчёт предназначен для эвольвентных цилиндрических колёс и реек. Для червяка и циклоидального колеса требуется отдельная модель пары.');
+    return unsupportedPair('Расчёт предназначен для эвольвентных цилиндрических колёс и реек. Для конического, червячного и циклоидального зацепления требуется отдельная модель пары.');
   if ((rack(first) && rack(second)) || (internal(first) && internal(second)) ||
       (rack(first) && internal(second)) || (internal(first) && rack(second)))
     return unsupportedPair('Поддерживаются два наружных колеса, наружное с внутренним либо наружное колесо с рейкой.');

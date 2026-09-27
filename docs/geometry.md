@@ -36,11 +36,11 @@ Rounded rack envelope is an explicit mathematical construction, adapted from the
 
 `profileTolerance` controls adaptive **2D** contour subdivision. Each segment is checked at 1/4, 1/2 and 3/4 parameter points; this is a measured sampling criterion, not a formal global Hausdorff guarantee. Default min(0.01mm, 0.005m). Root/involute positional joins are checked at max(1e−7mm,1e−7m); invalid joins fail. Numeric root diagnostics expose join error, tangent difference and sampled chord error. The helix is tessellated axially (at most 1.5 degrees per slice); no certified 3D error tolerance is claimed. STL is unitless by format convention; coordinates here are mm.
 
-Closed mesh verification does not establish pair interference, center distance, contact ratio, assembly, machining tolerance, load capacity, printer dimensional accuracy or service life. No bevel, worm wheel, eccentric pin-reducer, hypoid or noncircular geometry is generated. ZA worm and cylindrical cycloidal geometry are implemented separately in `wormGeometry.ts` and `cycloidalGeometry.ts`; the UI dispatches through `model.ts`. Other unsupported families remain unavailable for STL.
+Closed mesh verification does not establish pair interference, center distance, contact ratio, assembly, machining tolerance, load capacity, printer dimensional accuracy or service life. No octoid or spiral bevel, worm wheel, eccentric pin-reducer, hypoid or noncircular geometry is generated. Exact spherical-involute straight bevel, ZA worm and cylindrical cycloidal geometry are implemented separately in `bevelGeometry.ts`, `wormGeometry.ts` and `cycloidalGeometry.ts`; the UI dispatches through `model.ts`. Other unsupported families remain unavailable for STL.
 
 ## Verification
 
-Run `npm test` from the repository. Geometry tests include the original 23 checks plus internal-helical, helical-rack, ZA and cycloidal cases:
+Run `npm test` from the repository. Geometry tests include the original 23 checks plus internal-helical, helical-rack, ZA, cycloidal and spherical-involute bevel cases:
 
 - KHK numerical examples, normal/transverse conversions and signed profile-shift behavior.
 - Involute polar equation versus independent Cartesian unwinding-string equation.
@@ -87,3 +87,11 @@ A separately sampled circular bore and one-tooth sector triangulation avoid zero
 ## Separate pair report
 
 The UI's `PairDialog` uses `pairAnalysis.ts` for ideal unloaded involute external, internal and rack pairs. It reports the given two parts, actual or calculated operating distance, compatibility, backlash, radial clearance and contact ratios with stated restrictions. Its JSON is separate from the single-part passport. Unsupported worm and cycloidal pairs return an explicit unsupported status, never an involute substitute. See `pair-analysis.md` for equations and limits.
+
+## Straight bevel module
+
+`bevelGeometry.ts` implements the exact spherical involute with radial generators from a common apex, not a tapered cylindrical involute. `module` is the outer module, `width` is face width along the pitch generator; `bevelMateTeeth` and `bevelShaftAngleDeg` fix the pitch cone. Root and tip heights follow the explicit outer ha=m, hf=1.25m system. The supported root must remain at or above the base cone. A below-base root is rejected as an unimplemented generated transition, not declared physically impossible or undercut.
+
+The tooth ends are back cones; the core ends inside the root circles are flat. The true cylinder bore stays constant. The large flat end lies at world z=0; apex and reflection/translation are recorded alongside the spatial end contours. FDM uses the small-end tip chord and root-to-bore wall. The diagram tab is an XY projection, not a manufacturing section. The outer reference-sphere base circle is named separately; cylindrical base diameter/pitch are not applicable.
+
+Analytic interpolation bounds cover the spherical flank and conical caps before Float32 rounding. Tests independently check rolling-plane coordinates, pressure angle from the tangent, cone sections, both pitch cones, watertight oriented STL, root seams, bore, faceted volume and convergence to integrated analytic volume. See [full formulas, sources, supported domain and tests](bevel-geometry.md). No octoid/Gleason/spiral geometry, generated root fillet, working pair contact or strength certificate is claimed.

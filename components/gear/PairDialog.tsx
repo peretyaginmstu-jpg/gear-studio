@@ -60,13 +60,16 @@ function PairContent({ params }: { params: ModelParams }) {
     setSecond(old => ({ ...old, [key]: value }));
   function exportReport() {
     try {
+      const supportsCurrentFamily = kinds.includes(params.kind);
       const output = {
         schema: 'zatseplenie.pair-analysis.v1', createdAt: new Date().toISOString(), units: 'mm',
-        input: { first: params, second, centerDistanceMm: centerDistanceMm ?? null, centerMode: centerDistanceMm === undefined ? 'calculated-from-profile-shifts' : 'user-specified' },
+        input: { first: params, second: supportsCurrentFamily ? second : null,
+          centerDistanceMm: supportsCurrentFamily ? centerDistanceMm ?? null : null,
+          centerMode: supportsCurrentFamily ? centerDistanceMm === undefined ? 'calculated-from-profile-shifts' : 'user-specified' : 'not-applicable' },
         report,
       };
       const json = JSON.stringify(output, (_key, value) => typeof value === 'number' && !Number.isFinite(value) ? String(value) : value, 2);
-      downloadBlob(json, 'application/json', `gear-pair-${params.kind}-${second.kind}.json`);
+      downloadBlob(json, 'application/json', `gear-pair-${params.kind}-${supportsCurrentFamily ? second.kind : 'unsupported'}.json`);
       toast.success('Скачивание отчёта запрошено. Проверьте загрузки браузера.');
     } catch (error) { toast.error(error instanceof Error ? error.message : 'Не удалось сохранить отчёт.'); }
   }
@@ -74,13 +77,17 @@ function PairContent({ params }: { params: ModelParams }) {
     <p><strong>{modelNames[params.kind]}</strong></p>
     <p className="field-help">{params.kind === 'worm'
       ? `Осевой модуль mₓ = ${format(params.module)} мм; заходов = ${format(params.wormStarts ?? 1)}.`
-      : `Модуль m = ${format(params.module)} мм; зубьев z = ${format(params.teeth)}. Постоянный угол профиля αₙ для циклоиды не применяется.`}</p>
+      : params.kind === 'bevel'
+        ? `Внешний модуль mₑ = ${format(params.module)} мм; z₁ = ${format(params.teeth)}, z₂ = ${format(params.bevelMateTeeth ?? params.teeth)}; Σ = ${format(params.bevelShaftAngleDeg ?? 90)}°.`
+        : `Модуль m = ${format(params.module)} мм; зубьев z = ${format(params.teeth)}. Постоянный угол профиля αₙ для циклоиды не применяется.`}</p>
     <div className="print-verdict warning" role="status" data-testid="pair-verdict"><strong>{verdicts.unsupported}</strong>
       <p>{report.checks[0].detail}</p>
     </div>
     <p>{params.kind === 'worm'
       ? 'Нужна сопряжённая поверхность червячного колеса. Совпадение модуля и числа зубьев эвольвентного колеса не подтверждает совместимость с червяком ZA.'
-      : 'Для циклоидальной пары необходимо согласовать производящие окружности и рабочие участки обоих профилей. Этот диалог пока проверяет только эвольвентные пары.'}</p>
+      : params.kind === 'bevel'
+        ? 'Числа зубьев и угол осей задают делительный конус одиночной модели. Контакт сферических эвольвент, зазоры и интерференция конической пары требуют отдельного расчёта; цилиндрические формулы этого диалога неприменимы.'
+        : 'Для циклоидальной пары необходимо согласовать производящие окружности и рабочие участки обоих профилей. Этот диалог пока проверяет только цилиндрические эвольвентные пары.'}</p>
     <div className="dialog-action-row"><p>Размеры пары не рассчитаны и сохраняются в отчёте как null.</p><button className="primary-button" onClick={exportReport}><Download size={16} /> Скачать отчёт JSON</button></div>
   </>;
   const metrics: { key: keyof PairDimensions; label: string; unit?: string }[] = [
