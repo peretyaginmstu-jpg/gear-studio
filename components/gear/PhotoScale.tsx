@@ -15,6 +15,7 @@ export interface PhotoScaleMeasurement {
   sources: typeof photoScaleSources;
 }
 interface Props {
+  active?: boolean;
   image: string;
   width: number;
   height: number;
@@ -33,7 +34,7 @@ const formatBound = (value: number, edge: 'lower' | 'upper') => {
 };
 
 /** Remounted by the wizard for each new image and changed gear family. */
-export function PhotoScale({ image, width, height, internal, isApplied, onMeasured, onInvalidated }: Props) {
+export function PhotoScale({ active = true, image, width, height, internal, isApplied, onMeasured, onInvalidated }: Props) {
   const [open, setOpen] = useState(false), [zoom, setZoom] = useState(1);
   const [referencePoints, setReferencePoints] = useState<PhotoPoint[]>([]), [tipPoints, setTipPoints] = useState<PhotoPoint[]>([]);
   const [referenceLength, setReferenceLength] = useState(''), [referenceTolerance, setReferenceTolerance] = useState('');
@@ -95,7 +96,7 @@ export function PhotoScale({ image, width, height, internal, isApplied, onMeasur
   };
   const markerSize = Math.max(width, height) / 120;
   return <div style={{ margin: '16px 0' }}>
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open && active} onOpenChange={setOpen}>
       <DialogTrigger asChild><button type="button" className="secondary-button full"><Ruler size={16} />{isApplied ? 'Проверить измерение по фото' : 'Измерить диаметр по фото'}</button></DialogTrigger>
       <DialogContent style={{ width: 'calc(100vw - 24px)', maxWidth: 980, maxHeight: '94dvh', overflowY: 'auto', padding: 22, gap: 12 }}>
         <DialogTitle style={{ paddingRight: 25 }}>Диаметр по эталону на фото</DialogTitle>

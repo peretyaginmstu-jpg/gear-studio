@@ -1,173 +1,139 @@
 "use client";
-import { useDeferredValue, useMemo, useRef, useState } from 'react';
-import { Camera, Download, Cog, ArrowRight, Printer, BookOpen, Check, ChevronRight, ChevronDown, Pencil, Info, FileJson, FileText, AlertTriangle, Link2, Grid2X2, ScanLine, ShieldCheck } from 'lucide-react';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Toaster, toast } from 'sonner';
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import { Camera, Cog, ArrowRight, ArrowLeft, BookOpen, Check, Pencil, Info, FileJson, Grid2X2, ScanLine, SlidersHorizontal, Box, Download } from 'lucide-react';
+import { Toaster } from 'sonner';
 import { GearViewer } from '@/components/gear/GearViewer';
 import { PhotoWizard } from '@/components/gear/PhotoWizard';
-import { PrintDialog } from '@/components/gear/PrintDialog';
 import { ReferenceDialog } from '@/components/gear/ReferenceDialog';
-import { PairDialog } from '@/components/gear/PairDialog';
-import { ExportDialog } from '@/components/gear/ExportDialog';
 import { ParameterEditor } from '@/components/gear/ParameterEditor';
+import { ModelChips, ModelSummary, ModelInspection } from '@/components/gear/ModelSummary';
+import { CheckoutActions } from '@/components/gear/CheckoutActions';
 import { useGearTool } from '@/components/gear/useGearTool';
+import { useJourney } from '@/components/gear/useJourney';
 import { validateMesh } from '@/lib/gearMath';
-import { buildModelMesh, defaultModel, modelNames, isRackKind, isInternalKind, isHelicalKind, type ModelParams, type ModelKind } from '@/lib/model';
-import { createModelPassport, type ExportPreset } from '@/lib/modelExport';
-import { downloadBlob } from '@/lib/download';
+import { buildModelMesh, defaultModel, type ModelParams, type ModelKind } from '@/lib/model';
+import { canVisit, checkoutSnapshot, hasCurrentModel, type JourneyStage, type InputMode } from '@/lib/journey';
 
-const fmt = (n: number, digits = 2) => Number.isFinite(n) ? n.toLocaleString('ru-RU', { maximumFractionDigits: digits }) : '—';
+const stages: { stage: JourneyStage; title: string }[] = [
+  { stage: 'input', title: 'Исходные данные' }, { stage: 'review', title: 'Проверка модели' },
+  { stage: 'delivery', title: 'Получение' }, { stage: 'checkout', title: 'Оформление' },
+];
 
 export default function Home() {
-  const [params, setParams] = useState<ModelParams>(defaultModel()), deferred = useDeferredValue(params);
-  const [mode, setMode] = useState<'manual' | 'photo'>('manual'), [parametersOpen, setParametersOpen] = useState(false);
-  const [reference, setReference] = useState(false), [print, setPrint] = useState(false), [pairOpen, setPairOpen] = useState(false), [exportOpen, setExportOpen] = useState(false);
-  const [preset, setPreset] = useState<ExportPreset>('pro'), [origin, setOrigin] = useState('Параметры заданы вручную'), [evidence, setEvidence] = useState<unknown>(null);
-  const editorRef = useRef<HTMLElement>(null);
-  const calculation = useMemo(() => {
+  const { state, send } = useJourney(), heading = useRef<HTMLHeadingElement>(null);
+  const [reference, setReference] = useState(false);
+  const deferred = useDeferredValue(state.manualDraft), updating = deferred !== state.manualDraft;
+  const manualCheck = useMemo(() => {
+    if (state.mode !== 'manual' || state.stage !== 'input') return { error: null };
     try {
-      const mesh = buildModelMesh(deferred), validation = validateMesh(mesh);
-      if (!validation.valid) throw new Error('Сетка не прошла проверку. Измените параметры.');
-      return { mesh, validation, error: null };
-    } catch (e) { return { mesh: null, validation: null, error: e instanceof Error ? e.message : 'Не удалось построить профиль.' }; }
-  }, [deferred]);
-  const { mesh, validation, error } = calculation, updating = deferred !== params, ready = !!mesh && !!validation && !updating;
-  const d = mesh?.dimensions, worm = mesh && 'wormDimensions' in mesh ? mesh.wormDimensions : null;
-  const cycloidal = mesh && 'cycloidalDimensions' in mesh ? mesh.cycloidalDimensions : null, bevel = mesh && 'bevelDimensions' in mesh ? mesh.bevelDimensions : null;
-  const rack = isRackKind(params.kind), internal = isInternalKind(params.kind), isWorm = params.kind === 'worm', isBevel = params.kind === 'bevel';
-  const moduleSymbol = isWorm ? 'mₓ' : isBevel ? 'mₑ' : isHelicalKind(params.kind) ? 'mₙ' : 'm';
-  const manual = () => { setOrigin('Параметры заданы вручную'); setEvidence(null); };
-  const change = (key: keyof ModelParams, value: number) => { setParams(p => ({ ...p, [key]: value })); manual(); };
-  const selectKind = (kind: ModelKind) => { setParams(defaultModel(kind)); manual(); };
-  const reset = () => { setParams(defaultModel(params.kind)); manual(); toast('Исходные параметры восстановлены'); };
-  const openEditor = (nextMode: 'manual' | 'photo') => {
-    setMode(nextMode); setParametersOpen(true);
-    requestAnimationFrame(() => editorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
-  };
-  const openExport = (next: ExportPreset) => { if (ready) { setPreset(next); setExportOpen(true); } };
-  const downloadParams = () => {
-    if (!mesh || !validation || !ready) return;
-    downloadBlob(JSON.stringify(createModelPassport(mesh, validation, { origin, evidence }), null, 2), 'application/json', 'gear-parameters.json');
-    toast('Скачивание паспорта текущей модели запрошено');
-  };
-  useGearTool(params, p => { setParams(p); setEvidence(null); setOrigin('Параметры заданы через инструмент конструктора'); setMode('manual'); });
+      const mesh = buildModelMesh(deferred);
+      return { error: validateMesh(mesh).valid ? null : 'Сетка не прошла проверку. Измените параметры.' };
+    } catch (e) { return { error: e instanceof Error ? e.message : 'Не удалось построить профиль.' }; }
+  }, [deferred, state.mode, state.stage]);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => { heading.current?.focus({ preventScroll: true }); window.scrollTo({ top: 0, behavior: 'instant' }); });
+    return () => cancelAnimationFrame(frame);
+  }, [state.stage, state.mode]);
+  const edit = (params: ModelParams) => send({ type: 'edit-manual', params });
+  const change = (key: keyof ModelParams, value: number) => edit({ ...state.manualDraft, [key]: value });
+  const selectKind = (kind: ModelKind) => edit(defaultModel(kind));
+  const chooseInput = (mode: InputMode) => send({ type: 'choose-input', mode });
+  const navigate = (stage: JourneyStage) => send({ type: 'navigate', stage });
+  const buildManual = () => { if (!updating && !manualCheck.error) send({ type: 'build', params: state.manualDraft, origin: 'Параметры заданы вручную', evidence: null }); };
+  const model = hasCurrentModel(state) ? state.built : null, checkout = checkoutSnapshot(state);
+  const modelVisible = model && ['review', 'delivery', 'checkout'].includes(state.stage);
+  const inputActive = state.stage === 'input', photoActive = inputActive && state.mode === 'photo';
+  useGearTool(state.built?.params ?? state.manualDraft, params => {
+    send({ type: 'choose-input', mode: 'manual' }); send({ type: 'edit-manual', params });
+    send({ type: 'build', params, origin: 'Параметры заданы через инструмент конструктора', evidence: null });
+  });
 
-  return <div className="studio studio-v5">
+  return <div className="studio studio-v5 studio-v6">
     <Toaster position="bottom-center" richColors />
     <header className="topbar">
-      <a className="brand" href={`${process.env.NEXT_PUBLIC_BASE_PATH || ''}/`}><span className="brand-symbol"><Cog /></span>ЗАЦЕПЛЕНИЕ<span className="brand-version">LAB</span></a>
-      <span className="top-context">Модель и изготовление</span>
+      <button className="brand" onClick={() => navigate('start')} aria-label="Зацепление — на главную"><span className="brand-symbol"><Cog /></span>ЗАЦЕПЛЕНИЕ<span className="brand-version">LAB</span></button>
+      <span className="top-context">От детали — к своей модели</span>
       <button className="text-button header-reference" onClick={() => setReference(true)}><BookOpen size={20} /> Справочник</button>
     </header>
-    <main className="workbench">
-      <section className="workbench-model" aria-label="Текущая модель">
-        <div className="ready-heading">
-          <h1>{updating ? 'Пересчитываем модель…' : mesh ? 'Ваша модель готова' : 'Уточните параметры модели'}</h1>
-          <div className="model-chips"><span className="model-family">{modelNames[params.kind]}</span>
-            <span className="parameter-chip">{isWorm ? 'z₁' : 'z'} <strong>{fmt(isWorm ? params.wormStarts ?? 1 : params.teeth, 0)}</strong></span>
-            <span className="parameter-chip">{moduleSymbol} <strong>{fmt(params.module)} мм</strong></span>
-            <span className="parameter-chip">{isWorm ? 'L' : 'b'} <strong>{fmt(params.width)} мм</strong></span>
-          </div>
-          {mode === 'photo' && <p className="photo-model-note" role="note">Здесь показана текущая модель. Параметры фото появятся после подтверждения и применения.</p>}
-        </div>
-        <GearViewer mesh={mesh} error={error} />
-      </section>
+    {state.stage !== 'start' && <nav className="journey-progress" aria-label="Путь к модели"><ol>{stages.map(({ stage, title }, index) => <li key={stage} aria-current={stage === state.stage ? 'step' : undefined}>
+      <button disabled={!canVisit(state, stage)} onClick={() => navigate(stage)}><span>{canVisit(state, stage) && index < stages.findIndex(s => s.stage === state.stage) ? <Check size={15} /> : index + 1}</span>{title}</button>
+    </li>)}</ol></nav>}
 
-      <section className="source-panel" ref={editorRef} aria-label="Параметры и исходные данные">
-        <button className="panel-disclosure" aria-expanded={parametersOpen} aria-controls="parameter-editor" onClick={() => setParametersOpen(v => !v)}>
-          <span><ScanLine size={22} /> Параметры и исходные данные</span><ChevronDown size={20} className={parametersOpen ? 'is-open' : ''} />
-        </button>
-        <dl className="parameter-summary">
-          <div><dt>Тип зацепления</dt><dd>{modelNames[params.kind]}</dd></div>
-          <div><dt>{isWorm ? 'Число заходов' : 'Число зубьев'}</dt><dd>{isWorm ? 'z₁' : 'z'}&nbsp; {fmt(isWorm ? params.wormStarts ?? 1 : params.teeth, 0)}</dd></div>
-          <div><dt>{isBevel ? 'Внешний модуль' : isWorm ? 'Осевой модуль' : isHelicalKind(params.kind) ? 'Нормальный модуль' : 'Модуль'}</dt><dd>{moduleSymbol}&nbsp; {fmt(params.module)} мм</dd></div>
-          <div><dt>{isBevel ? 'По образующей' : isWorm ? 'Длина нарезки' : 'Ширина'}</dt><dd>{isWorm ? 'L' : 'b'}&nbsp; {fmt(params.width)} мм</dd></div>
-          <div><dt>{internal ? 'Обод' : rack ? 'Основание' : 'Отверстие'}</dt><dd>{!internal && !rack && '⌀ '}{fmt(internal ? params.rimThickness ?? 3 * params.module : rack ? params.rackBaseHeight ?? 3 * params.module : params.bore)} мм</dd></div>
-        </dl>
-        <div className="source-actions">
-          <button className={`secondary-button ${parametersOpen && mode === 'photo' ? 'chosen' : ''}`} onClick={() => openEditor('photo')}><Camera size={21} /> Восстановить по фото</button>
-          <button className={`secondary-button ${parametersOpen && mode === 'manual' ? 'chosen' : ''}`} onClick={() => openEditor('manual')}><Pencil size={21} /> Задать вручную</button>
+    <main>
+      {state.stage === 'start' && <section className="journey-start">
+        <p className="journey-eyebrow">ИНЖЕНЕРНАЯ МАСТЕРСКАЯ В БРАУЗЕРЕ</p>
+        <h1 ref={heading} tabIndex={-1}>Восстановите шестерню.<br />Или создайте новую.</h1>
+        <p className="start-intro">Начните с фотографии детали или известных размеров. Мы поможем собрать исходные данные, построить модель и подготовить её к изготовлению.</p>
+        <div className="start-choices">
+          <button className="start-choice" onClick={() => chooseInput('photo')}><span className="start-choice-icon"><Camera size={29} /></span><span><small>У МЕНЯ ЕСТЬ ДЕТАЛЬ</small><strong>Восстановить по фото</strong><span>Загрузите снимок. Помощник подскажет, что измерить и подтвердить.</span></span><ArrowRight size={23} /></button>
+          <button className="start-choice" onClick={() => chooseInput('manual')}><span className="start-choice-icon"><SlidersHorizontal size={29} /></span><span><small>Я ЗНАЮ РАЗМЕРЫ</small><strong>Задать параметры</strong><span>Выберите тип зацепления и введите параметры своей детали.</span></span><ArrowRight size={23} /></button>
         </div>
-        <div id="parameter-editor" className="source-editor" hidden={!parametersOpen}>
-          {mode === 'photo' ? <PhotoWizard onApply={(p, source, facts) => {
-            setParams({ ...defaultModel(p.kind), ...p }); setOrigin(source); setEvidence(facts); setMode('manual');
-            toast.success('Параметры применены. Проверьте 3D-модель.');
-          }} onManual={() => setMode('manual')} /> : <ParameterEditor params={params} onChange={change} onKind={selectKind}
-            onHand={hand => { setParams(p => ({ ...p, wormHand: hand })); manual(); }} onReset={reset} onReference={() => setReference(true)} />}
-        </div>
-      </section>
+        {model && <button className="inline-link resume-model" onClick={() => navigate('review')}>Вернуться к построенной модели <ArrowRight size={16} /></button>}
+        {state.mode && !model && <p className="draft-kept">Ваш черновик сохранён в этой вкладке. Выберите тот же способ, чтобы продолжить.</p>}
+        <div className="start-steps"><div><span>01</span><h2>Расскажите о детали</h2><p>Фото и измерения или параметры из чертежа.</p></div><div><span>02</span><h2>Проверьте модель</h2><p>Поверните её в 3D, сверьте размеры и ограничения.</p></div><div><span>03</span><h2>Получите результат</h2><p>Скачайте STL с паспортом или подготовьте задание на печать.</p></div></div>
+        <div className="start-capabilities"><span><Cog size={18} /> 10 семейств зацепления</span><span><Box size={18} /> Настоящая 3D-модель</span><span><Download size={18} /> Бесплатный Standard STL</span></div>
+        <p className="start-footnote">Расчёты и фото остаются на устройстве. Пригодность рабочей передачи проверяют по нагрузке, материалу и ответной детали.</p>
+      </section>}
 
-      <aside className="delivery-panel" aria-label="Файлы и печать">
-        <Tabs defaultValue="files" className="delivery-tabs">
-          <TabsList className="delivery-tab-list"><TabsTrigger value="files"><FileText size={22} /> Файлы</TabsTrigger><TabsTrigger value="print"><Printer size={22} /> Печать</TabsTrigger></TabsList>
-          <TabsContent value="files" className="delivery-content">
-            <h2>Скачайте модель для своих задач</h2>
-            <p className="delivery-intro">Оба варианта сохраняют аналитический профиль зуба. Детализация сетки не является подтверждением точности или прочности.</p>
-            <fieldset className="package-options"><legend className="visually-hidden">Детализация STL</legend>
-              <label className={`package-card ${preset === 'standard' ? 'selected' : ''}`}>
-                <input type="radio" name="export-preset" value="standard" checked={preset === 'standard'} onChange={() => setPreset('standard')} />
-                <div><strong>Standard STL — бесплатно</strong><p>Средняя детализация для просмотра и пробного изготовления.</p></div>
-              </label>
-              <label className={`package-card package-pro ${preset === 'pro' ? 'selected' : ''}`}>
-                <input type="radio" name="export-preset" value="pro" checked={preset === 'pro'} onChange={() => setPreset('pro')} />
-                <div><strong>Pro STL + паспорт</strong><p>Высокая детализация и параметры именно экспортируемой модели.</p>
-                  <ul><li><Grid2X2 size={19} /> Детализация кривых</li><li><FileJson size={19} /> Паспорт параметров JSON</li><li><ShieldCheck size={19} /> Результат проверки сетки</li></ul>
-                </div>
-              </label>
-            </fieldset>
-            <div className="package-download">
-              <p className="access-note">{preset === 'pro' ? 'Бесплатно в раннем доступе' : 'Бесплатно. Без регистрации.'}</p>
-              <button className="primary-button full package-primary" disabled={!ready} onClick={() => openExport(preset)}>Скачать {preset === 'pro' ? 'Pro STL' : 'Standard STL'} <ArrowRight size={21} /></button>
-              {preset === 'pro' && <button className="free-download" disabled={!ready} onClick={() => openExport('standard')}><Download size={19} /> Скачать бесплатный Standard STL</button>}
+      {/* Both input branches stay mounted. Ordinary navigation preserves photo, points and answers. */}
+      <section className="journey-input" hidden={!inputActive} aria-label="Исходные данные">
+        <div className="input-heading"><button className="inline-link" onClick={() => navigate('start')}><ArrowLeft size={17} /> Сменить способ</button>
+          <h1 ref={inputActive ? heading : null} tabIndex={-1}>{state.mode === 'photo' ? 'Восстановим деталь по шагам' : 'Задайте параметры своей детали'}</h1>
+          <p>{state.mode === 'photo' ? 'Сначала снимок, затем только те уточнения, которые нужны для построения.' : 'Начальные значения — редактируемый пример. Замените их данными своей детали и нажмите «Построить модель».'}</p>
+        </div>
+        <div className="input-workspace">
+          <div className="journey-form">
+            <div hidden={state.mode !== 'manual'}>
+              <ParameterEditor active={inputActive && state.mode === 'manual'} params={state.manualDraft} onChange={change} onKind={selectKind}
+                onHand={hand => edit({ ...state.manualDraft, wormHand: hand })} onReset={() => edit(defaultModel(state.manualDraft.kind))} onReference={() => setReference(true)} />
+              <div className="manual-build-status" aria-live="polite">{updating ? <p>Проверяем параметры…</p> : manualCheck.error ? <p className="inline-error" role="alert">{manualCheck.error}</p> : <p><Check size={17} /> Параметры можно использовать для построения.</p>}</div>
+              <button className="primary-button full build-model-button" disabled={updating || !!manualCheck.error} onClick={buildManual}>Построить модель <ArrowRight size={20} /></button>
             </div>
-            <button className="print-path" disabled={!ready} onClick={() => setPrint(true)}><Printer size={25} /><span><strong>Подготовить к печати</strong><small>Выберите материал, проверьте размеры и скачайте задание.</small></span><ChevronRight size={21} /></button>
-            <p className="delivery-note"><Info size={20} /> Перед изготовлением проверьте размеры и сопряжение.</p>
-          </TabsContent>
-          <TabsContent value="print" className="delivery-content print-tab-content">
-            <h2>От модели — к пробной детали</h2><p className="delivery-intro">Проверьте, подходит ли геометрия вашему FDM-принтеру, и сохраните задание для себя или исполнителя.</p>
-            <div className="print-step"><span>01</span><div><strong>Габариты и толщина</strong><p>Стол, сопло, линии, слои и минимальные размеры зуба.</p></div></div>
-            <div className="print-step"><span>02</span><div><strong>Материал и настройки</strong><p>Выберите материал пробной детали. Нагрузку и ресурс рассчитывают отдельно.</p></div></div>
-            <div className="print-step"><span>03</span><div><strong>Задание на печать</strong><p>Файл JSON с параметрами, проверками и вопросами для исполнителя.</p></div></div>
-            <button className="primary-button full package-primary" disabled={!ready} onClick={() => setPrint(true)}>Оценить печать <ArrowRight size={21} /></button>
-            <p className="delivery-note"><Info size={20} /> Заказ и оплата не оформляются. Сейчас доступна оценка геометрии и скачивание задания.</p>
-          </TabsContent>
-        </Tabs>
-      </aside>
-
-      <section className="engineering-panel">
-        <details className="engineering-details"><summary><span>{mesh ? <Check size={20} /> : <AlertTriangle size={20} />} Геометрия и проверка</span><span className="mesh-count">{validation ? `${fmt(validation.triangles, 0)} треугольников` : 'Требует уточнения'} <ChevronDown size={17} /></span></summary>
-          <p className="origin-note">{origin}</p>
-          {d ? <dl className="dimension-list"><Dimension label={rack ? 'Длина рейки' : isBevel ? 'Большой делительный диаметр' : 'Делительный диаметр'} value={rack ? d.rackLength : d.pitchDiameter} testId="pitch-diameter" />
-            <Dimension label={rack ? 'Высота рейки' : isBevel ? 'Большой диаметр вершин' : 'Диаметр вершин'} value={rack ? d.rackHeight : d.tipDiameter} />
-            {!rack && <Dimension label={isBevel ? 'Большой диаметр впадин' : 'Диаметр впадин'} value={d.rootDiameter} />}
-            <Dimension label={isWorm ? 'Осевой шаг' : isBevel ? 'Внешний окружной шаг' : cycloidal ? 'Делительный шаг' : 'Торцевой шаг'} value={worm?.axialPitch ?? d.transverseCircularPitch} digits={3} />
-            <Dimension label={isWorm ? 'Осевой размер вершины' : isBevel ? 'Хорда малой вершины' : cycloidal ? 'Дуга вершины' : 'Толщина вершины'} value={bevel?.innerTipChordThickness ?? worm?.axialTipThickness ?? d.tipThickness} digits={3} />
-            {cycloidal && <><Dimension label="Производящий радиус" value={cycloidal.rollingRadius} /><div><dt>Постоянный угол α</dt><dd>Неприменим</dd></div></>}
-            {worm && <><Dimension label="Ход витка" value={worm.lead} /><div><dt>Угол подъёма γ</dt><dd>{fmt(worm.leadAngleDeg)}°</dd></div></>}
-            {bevel && <><div><dt>Делительный конус δ₁</dt><dd>{fmt(bevel.pitchConeAngleDeg)}°</dd></div><div><dt>Основной конус δᵦ</dt><dd>{fmt(bevel.baseConeAngleDeg)}°</dd></div><Dimension label="Конусное расстояние Rₑ" value={bevel.outerConeDistance} /><Dimension label="Малый модуль mᵢ" value={bevel.innerModule} digits={3} /><Dimension label="Высота по оси H" value={bevel.axialExtent} /></>}
-            {['helical', 'herringbone', 'internal-helical', 'helical-rack'].includes(params.kind) && <Dimension label="Торцевой модуль" value={d.transverseModule} digits={3} />}
-          </dl> : <p className="inline-error">{error}</p>}
-          <div className="engineering-actions">
-            <button className="secondary-button pair-button" disabled={!ready} onClick={() => setPairOpen(true)}><Link2 size={18} /> Проверить пару</button>
-            <button className="secondary-button" disabled={!ready} onClick={downloadParams}><FileJson size={18} /> Паспорт текущей модели</button>
+            <div hidden={state.mode !== 'photo'}><PhotoWizard active={photoActive} onDraftChange={() => send({ type: 'edit-photo' })} onApply={(params, origin, evidence) => send({ type: 'build', params: { ...defaultModel(params.kind), ...params }, origin, evidence })} onManual={() => chooseInput('manual')} /></div>
+            {state.error && <p className="inline-error" role="alert">{state.error}</p>}
           </div>
-          {mesh && <div className="calculation-details"><h3>Допущения модели</h3><ul>{mesh.warnings.map(w => <li className={w.severity} key={w.code}>{w.message}</li>)}</ul>
-            {'cycloidalDiagnostics' in mesh && <p>Верхняя граница ошибки плоской хорды: {fmt(mesh.cycloidalDiagnostics.maxChordErrorBound, 5)} мм при допуске {fmt(mesh.cycloidalDiagnostics.profileTolerance, 4)} мм до Float32.</p>}
-            {'bevelDiagnostics' in mesh && <p>Границы дискретизации до Float32: боковина {fmt(mesh.bevelDiagnostics.maxFlankChordErrorBound, 5)} мм; задний конус {fmt(mesh.bevelDiagnostics.maxEndCapErrorBound, 5)} мм при допуске {fmt(mesh.bevelDiagnostics.profileTolerance, 4)} мм.</p>}
-            {mesh.profile.rootDiagnostics && <p>Выборочная ошибка хорды профиля: {fmt(mesh.profile.rootDiagnostics.maxSampledChordError, 5)} мм при заданном {fmt(mesh.profile.rootDiagnostics.profileTolerance, 3)} мм. Это не класс точности детали.</p>}
-            <button className="inline-link" onClick={() => setReference(true)}>Подробнее о методе</button>
-          </div>}
-        </details>
+          <aside className="input-help"><span className="help-icon">{state.mode === 'photo' ? <Camera size={24} /> : <Pencil size={24} />}</span>
+            <h2>Это данные вашей детали</h2><p>{state.mode === 'photo' ? 'Фотография помогает увидеть контур. Реальный размер, профиль и недостающие зубья требуют подтверждения.' : 'Модуль, число зубьев и размеры задают геометрию. Если чего-то не знаете, сверьтесь с чертежом или измерьте ответную деталь.'}</p>
+            <p>После построения будет отдельный шаг проверки — до выбора файла или печати.</p>
+            <button className="inline-link" onClick={() => setReference(true)}><BookOpen size={16} /> Открыть справочник</button>
+            <button className="inline-link" onClick={() => chooseInput(state.mode === 'photo' ? 'manual' : 'photo')}>{state.mode === 'photo' ? 'Перейти к ручному вводу' : 'Использовать фото'} <ArrowRight size={16} /></button>
+            {model && <button className="inline-link" onClick={() => navigate('review')}>Вернуться к модели без изменений <ArrowRight size={16} /></button>}
+          </aside>
+        </div>
       </section>
-    </main>
-    <footer className="page-footer"><span>ЗАЦЕПЛЕНИЕ <span className="muted">/ инженерная мастерская</span></span><span>Локальные вычисления · Миллиметры · Версия 0.5</span></footer>
-    <ReferenceDialog open={reference} onOpenChange={setReference} />
-    <PrintDialog open={print && ready} onOpenChange={setPrint} mesh={mesh} validation={validation} />
-    <ExportDialog open={exportOpen && ready} onOpenChange={setExportOpen} params={params} preset={preset} origin={origin} evidence={evidence} />
-    <PairDialog open={pairOpen && ready} onOpenChange={setPairOpen} params={params} />
-  </div>;
-}
 
-function Dimension({ label, value, digits = 2, testId }: { label: string; value: number; digits?: number; testId?: string }) {
-  return <div><dt>{label}</dt><dd data-testid={testId}>{fmt(value, digits)} мм</dd></div>;
+      {modelVisible && <div className="workbench journey-model-workspace">
+        <section className="workbench-model" aria-label="Ваша построенная модель"><div className="ready-heading">
+          <button className="inline-link model-back" onClick={() => navigate(state.stage === 'review' ? 'input' : state.stage === 'delivery' ? 'review' : 'delivery')}><ArrowLeft size={17} />{state.stage === 'review' ? 'Изменить данные' : 'Назад'}</button>
+          <h1 ref={heading} tabIndex={-1}>{state.stage === 'review' ? 'Проверьте модель' : state.stage === 'delivery' ? 'Как получить модель?' : 'Всё для вашей модели'}</h1>
+          <ModelChips params={model.params} />
+        </div><GearViewer mesh={model.mesh} error={null} /></section>
+        <section className="source-panel model-source-summary" aria-label="Построенные параметры"><h2><ScanLine size={21} /> Параметры вашей модели</h2><ModelSummary params={model.params} />
+          <button className="inline-link" onClick={() => navigate('input')}><Pencil size={16} /> Изменить исходные данные</button>
+        </section>
+        <aside className="delivery-panel journey-next-panel" aria-label={state.stage === 'review' ? 'Проверка перед получением' : 'Получение результата'}>
+          {state.stage === 'review' && <><p className="journey-eyebrow">МОДЕЛЬ ПО ВАШИМ ДАННЫМ</p><h2>Похожа на вашу деталь?</h2>
+            <p className="delivery-intro">Поверните модель и сравните основные размеры. Если нужно что-то исправить, вернитесь к исходным данным.</p>
+            <ol className="review-checks"><li><Check size={19} /><span>Тип, число и направление зубьев</span></li><li><Check size={19} /><span>Модуль, ширина и отверстие или обод</span></li><li><Check size={19} /><span>Допущения и ограничения в разделе геометрии</span></li></ol>
+            <button className="primary-button full package-primary" onClick={() => send({ type: 'confirm' })}>Модель верна — продолжить <ArrowRight size={20} /></button>
+            <button className="secondary-button full" onClick={() => navigate('input')}><Pencil size={18} /> Изменить данные</button>
+            <p className="delivery-note"><Info size={19} /> Вы подтверждаете размеры и форму. Это не проверка прочности, ресурса или совместимости всей передачи.</p>
+          </>}
+          {state.stage === 'delivery' && <><h2>Файл или подготовка печати</h2><p className="delivery-intro">Выберите результат для этой модели. На следующем шаге получите файлы или настройки и задание.</p>
+            <fieldset className="package-options"><legend className="visually-hidden">Способ получения</legend>
+              <label className={`package-card ${state.choice?.kind === 'file' && state.choice.preset === 'standard' ? 'selected' : ''}`}><input type="radio" name="delivery-choice" checked={state.choice?.kind === 'file' && state.choice.preset === 'standard'} onChange={() => send({ type: 'choose-delivery', choice: { kind: 'file', preset: 'standard' } })} /><div><strong>Standard STL — бесплатно</strong><p>Средняя детализация для просмотра и пробного изготовления. Паспорт сетки доступен при скачивании.</p></div></label>
+              <label className={`package-card package-pro ${state.choice?.kind === 'file' && state.choice.preset === 'pro' ? 'selected' : ''}`}><input type="radio" name="delivery-choice" checked={state.choice?.kind === 'file' && state.choice.preset === 'pro'} onChange={() => send({ type: 'choose-delivery', choice: { kind: 'file', preset: 'pro' } })} /><div><strong>Pro STL + паспорт</strong><p>Высокая детализация. Бесплатно в раннем доступе.</p><ul><li><Grid2X2 size={18} /> Дискретизация кривых</li><li><FileJson size={18} /> Паспорт экспортируемой сетки</li></ul></div></label>
+              <label className={`package-card ${state.choice?.kind === 'print' ? 'selected' : ''}`}><input type="radio" name="delivery-choice" checked={state.choice?.kind === 'print'} onChange={() => send({ type: 'choose-delivery', choice: { kind: 'print' } })} /><div><strong>Подготовить к печати</strong><p>Материал, геометрическая оценка для FDM и задание для расчёта. STL тоже доступен.</p></div></label>
+            </fieldset>
+            <button className="primary-button full package-primary" disabled={!state.choice} onClick={() => navigate('checkout')}>Продолжить <ArrowRight size={20} /></button>
+            <p className="delivery-note"><Info size={19} /> Плотность STL не меняет аналитический профиль и не является классом точности. Платежи пока не подключены.</p>
+          </>}
+          {checkout && <CheckoutActions model={checkout.model} choice={checkout.choice} onChange={() => navigate('delivery')} />}
+        </aside>
+        <section className="engineering-panel"><ModelInspection model={model} onReference={() => setReference(true)} /></section>
+      </div>}
+    </main>
+    <footer className="page-footer"><span>ЗАЦЕПЛЕНИЕ <span className="muted">/ инженерная мастерская</span></span><span>Локальные вычисления · Миллиметры · Версия 0.6</span></footer>
+    <ReferenceDialog open={reference} onOpenChange={setReference} />
+  </div>;
 }

@@ -2,17 +2,19 @@
 import { RotateCcw, SlidersHorizontal, ArrowUpRight } from 'lucide-react';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { isHelicalKind, isInternalKind, isRackKind, modelNames, type ModelKind, type ModelParams } from '@/lib/model';
+import { useActivePopup } from './useActivePopup';
 
-export function ParameterEditor({ params, onChange, onKind, onHand, onReset, onReference }: {
-  params: ModelParams; onChange: (key: keyof ModelParams, value: number) => void;
+export function ParameterEditor({ active = true, params, onChange, onKind, onHand, onReset, onReference }: {
+  active?: boolean; params: ModelParams; onChange: (key: keyof ModelParams, value: number) => void;
   onKind: (kind: ModelKind) => void; onHand: (hand: 'left' | 'right') => void;
   onReset: () => void; onReference: () => void;
 }) {
   const helical = isHelicalKind(params.kind), rack = isRackKind(params.kind), internal = isInternalKind(params.kind);
   const worm = params.kind === 'worm', cycloidal = params.kind === 'cycloidal', bevel = params.kind === 'bevel';
+  const familyPopup = useActivePopup(active), handPopup = useActivePopup(active && worm);
   return <div className="parameter-editor">
     <div className="editor-family"><label className="field-label" htmlFor="gear-kind">Тип зацепления</label>
-      <Select value={params.kind} onValueChange={v => onKind(v as ModelKind)}><SelectTrigger id="gear-kind" className="select-control"><SelectValue /></SelectTrigger>
+      <Select {...familyPopup} value={params.kind} onValueChange={v => onKind(v as ModelKind)}><SelectTrigger id="gear-kind" className="select-control"><SelectValue /></SelectTrigger>
         <SelectContent>{Object.entries(modelNames).map(([kind, title]) => <SelectItem key={kind} value={kind}>{title}</SelectItem>)}</SelectContent></Select>
       <button className="family-help" onClick={onReference}>Область применения <ArrowUpRight size={14} /></button>
     </div>
@@ -28,7 +30,7 @@ export function ParameterEditor({ params, onChange, onKind, onHand, onReset, onR
       {!worm && !cycloidal && !bevel && <NumberField label="Смещение" symbol="x" value={params.profileShift} min={-.8} max={1} step={.05} onChange={v => onChange('profileShift', v)} />}
       {helical && <NumberField label="Угол наклона зуба" symbol="β, °" value={params.helixAngleDeg} min={-45} max={45} onChange={v => onChange('helixAngleDeg', v)} />}
       {worm && <><NumberField label="Коэффициент диаметра" symbol="q" value={params.wormDiameterFactor ?? 10} min={2.51} max={100} step={.5} onChange={v => onChange('wormDiameterFactor', v)} />
-        <div><label className="field-label" htmlFor="worm-hand">Направление витка</label><Select value={params.wormHand ?? 'right'} onValueChange={v => onHand(v as 'right' | 'left')}><SelectTrigger id="worm-hand" className="select-control"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="right">Правое</SelectItem><SelectItem value="left">Левое</SelectItem></SelectContent></Select></div></>}
+        <div><label className="field-label" htmlFor="worm-hand">Направление витка</label><Select {...handPopup} value={params.wormHand ?? 'right'} onValueChange={v => onHand(v as 'right' | 'left')}><SelectTrigger id="worm-hand" className="select-control"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="right">Правое</SelectItem><SelectItem value="left">Левое</SelectItem></SelectContent></Select></div></>}
       {cycloidal && <NumberField label="Производящий радиус" symbol="r, мм" value={params.cycloidRollingRadius ?? Math.min(2 * params.module, params.module * params.teeth / 4)} min={.001} max={params.module * params.teeth / 4} step={.1} onChange={v => onChange('cycloidRollingRadius', v)} />}
       {bevel && <><NumberField label="Зубьев партнёра" symbol="z₂" value={params.bevelMateTeeth ?? params.teeth} min={6} max={250} onChange={v => onChange('bevelMateTeeth', v)} />
         <NumberField label="Угол осей" symbol="Σ, °" value={params.bevelShaftAngleDeg ?? 90} min={1} max={179} onChange={v => onChange('bevelShaftAngleDeg', v)} /></>}

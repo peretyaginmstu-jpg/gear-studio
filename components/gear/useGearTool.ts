@@ -37,7 +37,7 @@ export function useGearTool(params: ModelParams, onApply: (params: ModelParams) 
         if (!check.valid) throw new Error('Некорректная сетка');
         state.current.onApply(p);
         await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-        return { appVersion: '0.5.0', parameters: mesh.params, dimensions: modelDimensionsForReport(mesh),
+        return { appVersion: '0.6.0', journey: { stage: 'review', requiresModelConfirmation: true }, parameters: mesh.params, dimensions: modelDimensionsForReport(mesh),
           wormDimensions: 'wormDimensions' in mesh ? mesh.wormDimensions : null,
           cycloidalDimensions: 'cycloidalDimensions' in mesh ? mesh.cycloidalDimensions : null,
           bevelDimensions: 'bevelDimensions' in mesh ? mesh.bevelDimensions : null, warnings: mesh.warnings, meshValid: check.valid };
