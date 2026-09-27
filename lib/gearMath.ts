@@ -1,8 +1,11 @@
 import {generatedExternalOutline} from './generatedRoot.ts';
 import type {RootDiagnostics} from './generatedRoot.ts';
+import {defaultInternalCutter, deriveInternalCutter, generatedInternalOutline, internalCutterKeys} from './generatedInternalRoot.ts';
+import type {InternalCutterGeometry, InternalRootDiagnostics} from './generatedInternalRoot.ts';
 /**
  * Dependency-free involute gear kernel. All linear dimensions are millimetres.
- * Analytic flanks and rounded-rack generated external roots; simplified internal roots.
+ * Analytic flanks; rack-generated external roots and pinion-generated internal spur roots.
+ * Internal helical roots remain an explicitly separate simplified transverse model.
  * A valid closed mesh is not an ISO/JIS precision grade or a strength/meshability certificate.
  */
 export type GearKind = 'spur' | 'helical' | 'herringbone' | 'internal' | 'internal-helical' | 'rack' | 'helical-rack';
@@ -30,6 +33,13 @@ export interface GearParams {
   toolTipRadiusCoefficient?: number;
   /** Adaptive 2D contour sampling tolerance in mm. Not a certified 3D STL tolerance. */
   profileTolerance?: number;
+  /** Explicit/assumed straight internal pinion cutter; never inferred from a photograph. */
+  internalCutterTeeth?: number;
+  internalCutterProfileShift?: number;
+  internalCutterAddendumCoefficient?: number;
+  internalCutterTipRadiusCoefficient?: number;
+  /** Cutter reference-circle thickness reduction, millimetres. */
+  internalCutterThinning?: number;
 }
 export interface GearWarning { code: string; severity: 'info' | 'warning'; message: string }
 export interface GearDimensions {
@@ -60,7 +70,7 @@ export interface GearDimensions {
   /** Signed x offset between rack end faces, width * tan(beta); zero for circular gears. */
   rackAxialOffset: number;
 }
-export interface GearDerived { params: GearParams; dimensions: GearDimensions; warnings: GearWarning[] }
+export interface GearDerived { params: GearParams; dimensions: GearDimensions; warnings: GearWarning[]; internalCutterGeometry?: InternalCutterGeometry }
 export interface Point2 { x: number; y: number }
 export interface GearProfile extends GearDerived {
   /** CCW material outer contour; unclosed, no duplicate endpoint. */
@@ -68,6 +78,7 @@ export interface GearProfile extends GearDerived {
   /** CCW hole contour if present. Both loops use matching radial samples. */
   hole: Point2[] | null;
   rootDiagnostics?: RootDiagnostics;
+  internalRootDiagnostics?: InternalRootDiagnostics;
 }
 export interface GearMesh extends GearDerived {
   positions: Float32Array;
@@ -106,6 +117,9 @@ export function deriveGear(input: GearParams): GearDerived {
       fail('NON_FINITE', `Параметр ${key} должен быть конечным числом.`);
   }
   const internal = p.kind === 'internal' || p.kind === 'internal-helical';
+  if (p.kind !== 'internal' && internalCutterKeys.some(key => p[key] !== undefined))
+    fail('INTERNAL_CUTTER_KIND', 'Параметры плоского долбяка применимы только к внутреннему прямозубому колесу.');
+  if (p.kind === 'internal') for (const key of internalCutterKeys) p[key] ??= defaultInternalCutter[key];
   const rack = p.kind === 'rack' || p.kind === 'helical-rack';
   if (!Number.isInteger(p.teeth) || p.teeth < (rack ? 1 : 6) || p.teeth > 250)
     fail('TEETH_RANGE', 'Число зубьев должно быть целым: 6–250 для колеса, 1–250 для рейки.');
@@ -125,9 +139,9 @@ export function deriveGear(input: GearParams): GearDerived {
   const st = sn / cb, pt = PI * mt;
   if (!(sn > 0.05 * mn && st < pt - 0.05 * mn)) fail('TOOTH_THICKNESS', 'Смещение и зазор дают недопустимую толщину зуба.');
   const ha = mn * (1 + (internal ? -1 : 1) * p.profileShift);
-  const hf = mn * (1.25 + (internal ? 1 : -1) * p.profileShift);
+  let hf = mn * (1.25 + (internal ? 1 : -1) * p.profileShift);
   const ra = internal ? d / 2 - ha : d / 2 + ha;
-  const rf = internal ? d / 2 + hf : d / 2 - hf;
+  let rf = internal ? d / 2 + hf : d / 2 - hf;
   const warnings: GearWarning[] = [];
   if (!rack && !(Math.min(ra, rf) > mn * 0.05)) fail('ROOT_RADIUS', 'Радиусы при этих параметрах недопустимы.');
   const zv = p.teeth / cb ** 3;
@@ -136,6 +150,8 @@ export function deriveGear(input: GearParams): GearDerived {
     warnings.push({code:'UNDERCUT',severity:'warning',message:`Возможное подрезание: ориентир x ≥ ${xmin.toFixed(3)}. Подрезанная переходная кривая здесь не моделируется.`});
   if (internal && ra < rb)
     fail('INTERNAL_BASE_INTERFERENCE', 'Вершины внутренних зубьев ниже основной окружности: выбранные параметры требуют специального профиля и проверки интерференции. Увеличьте z, угол профиля или смещение.');
+  const internalCutterGeometry = p.kind === 'internal' ? deriveInternalCutter(p) : undefined;
+  if (internalCutterGeometry) { rf = internalCutterGeometry.rootRadius; hf = rf - d / 2; }
   if (!rack && !internal && p.bore / 2 >= rf - mn * 0.05)
     fail('BORE_INTERSECTION', 'Отверстие пересекает основание зубьев. Уменьшите его диаметр.');
   const rim = p.rimThickness ?? 3 * mn;
@@ -156,9 +172,10 @@ export function deriveGear(input: GearParams): GearDerived {
     tipThickness = 2 * ra * half;
     if (tipThickness <= 0.02 * mn) fail('POINTED_TOOTH', 'Зуб заостряется: уменьшите смещение/зазор или измените число зубьев.');
   }
-  warnings.push({ code:!rack&&!internal?'ROOT_TOOL':'SIMPLIFIED_ROOT',severity:'info',message: rack
+  warnings.push({ code:internalCutterGeometry?'GENERATED_INTERNAL_ROOT':!rack&&!internal?'ROOT_TOOL':'SIMPLIFIED_ROOT',severity:'info',message: rack
     ? 'Профиль рейки прямолинейный; у основания зубьев острые углы без скругления инструмента.'
-    : internal ? 'Рабочие боковины — аналитическая эвольвента до окружности впадин. Галтель, образованная долбяком, не построена.'
+    : internalCutterGeometry ? `Корень — огибающая долбяка zс=${internalCutterGeometry.tool.teeth}, ρс=${internalCutterGeometry.toolTipRadius.toFixed(3)} мм. Инструмент задан или принят; по фото он не установлен.`
+    : internal ? 'Внутреннее косозубое: торцевая эвольвента до окружности впадин, без производящей переходной поверхности косозубого долбяка. Плоская огибающая к нему не применяется.'
     : `Корень рассчитывается как огибающая производящей рейки с радиусом вершины ${(mn*(p.toolTipRadiusCoefficient??.3)).toFixed(3)} мм; профиль инструмента принят как исходный параметр.` });
   if (internal) warnings.push({code:'INTERNAL_PAIR',severity:'warning',message:'Для внутреннего зацепления необходимы данные ответного колеса: интерференция и собираемость пары ещё не проверены.'});
   if (rack && p.profileShift !== 0) warnings.push({code:'RACK_DATUM',severity:'info',message:'Смещение рейки меняет положение исходной линии; размещение в паре нужно учитывать отдельно.'});
@@ -175,7 +192,7 @@ export function deriveGear(input: GearParams): GearDerived {
     rackLength:rack?pt*p.teeth:0, rackHeight:rack?ha+hf+baseHeight:0,
     rackAxialOffset:rack?p.width*Math.tan(beta):0,
   };
-  return { params:p, dimensions, warnings };
+  return { params:p, dimensions, warnings, internalCutterGeometry };
 }
 
 /** Samples a CCW star-shaped involute outline, with a chord transition below rb. */
@@ -225,7 +242,8 @@ export function buildGearProfile(p:GearParams, flankSamples=12):GearProfile {
   }
   const r=d.pitchDiameter/2, rb=d.baseDiameter/2, internal=p.kind==='internal'||p.kind==='internal-helical';
   const generated = internal ? null : generatedExternalOutline(p,d,samples);
-  const outline=generated?.outline ?? involuteOutline(p.teeth,r,rb,d.tipDiameter/2,d.rootDiameter/2,
+  const generatedInternal = derived.internalCutterGeometry ? generatedInternalOutline(derived.params,d,derived.internalCutterGeometry,samples) : null;
+  const outline=generated?.outline ?? generatedInternal?.outline ?? involuteOutline(p.teeth,r,rb,d.tipDiameter/2,d.rootDiameter/2,
     d.transverseCircularPitch-d.transverseToothThickness,samples);
   if(generated){
     derived.warnings=derived.warnings.filter(w=>w.code!=='SIMPLIFIED_ROOT'&&w.code!=='ROOT_TOOL');
@@ -233,7 +251,7 @@ export function buildGearProfile(p:GearParams, flankSamples=12):GearProfile {
   }
   const circle=(radius:number)=>outline.map(v=>polar(radius,Math.atan2(v.y,v.x)));
   return {...derived,outer:internal?circle(d.outsideDiameter/2):outline,
-    hole:internal?outline:p.bore>0?circle(p.bore/2):null,rootDiagnostics:generated?.diagnostics};
+    hole:internal?outline:p.bore>0?circle(p.bore/2):null,rootDiagnostics:generated?.diagnostics,internalRootDiagnostics:generatedInternal?.diagnostics};
 }
 
 function signedArea(points:Point2[]):number { return points.reduce((s,p,i)=>{const q=points[(i+1)%points.length];return s+p.x*q.y-q.x*p.y;},0)/2; }

@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { defaultModel, modelNames, type ModelKind, type ModelParams } from '@/lib/model';
 import { analyzeGearPair, type PairDimensions, type PairStatus } from '@/lib/pairAnalysis';
 import { downloadBlob } from '@/lib/download';
+import { InternalCutterFields } from './InternalCutterFields';
 
 const kinds: ModelKind[] = ['spur', 'helical', 'herringbone', 'internal', 'internal-helical', 'rack', 'helical-rack'];
 const isHelical = (kind: ModelKind) => ['helical', 'herringbone', 'internal-helical', 'helical-rack'].includes(kind);
@@ -62,7 +63,7 @@ function PairContent({ params }: { params: ModelParams }) {
     try {
       const supportsCurrentFamily = kinds.includes(params.kind);
       const output = {
-        schema: 'zatseplenie.pair-analysis.v1', createdAt: new Date().toISOString(), units: 'mm',
+        schema: 'zatseplenie.pair-analysis.v2', createdAt: new Date().toISOString(), units: 'mm',
         input: { first: params, second: supportsCurrentFamily ? second : null,
           centerDistanceMm: supportsCurrentFamily ? centerDistanceMm ?? null : null,
           centerMode: supportsCurrentFamily ? centerDistanceMm === undefined ? 'calculated-from-profile-shifts' : 'user-specified' : 'not-applicable' },
@@ -130,6 +131,7 @@ function PairContent({ params }: { params: ModelParams }) {
           {!isRack(second.kind) && !isInternal(second.kind) && <Num label="Радиус инструмента / mₙ" value={second.toolTipRadiusCoefficient ?? 0.3} min={0.001} step={0.01} change={v => number('toolTipRadiusCoefficient', v)} />}
         </div>
         <p className="field-help">δₙ — уменьшение толщины одного зуба в нормальном сечении, не зазор всей пары. Ноль означает отсутствие утонения. Вторая наружная модель принята без отверстия; радиус инструмента по умолчанию 0,3 mₙ.</p>
+        {second.kind === 'internal' && <InternalCutterFields params={second} onChange={(key, value) => setSecond(old => ({ ...old, [key]: value }))} />}
         <h3 style={{ marginTop: 22 }}>3. Рабочее положение</h3>
         <label className="number-field" htmlFor="pair-center-distance">{rackPair ? 'Центр — линия y = 0 рейки, мм' : 'Фактическое межосевое a, мм'}</label>
         <input id="pair-center-distance" type="number" className="select-control" min="0.000001" step="0.01" value={center} placeholder="Пусто — рассчитать по x" onChange={event => setCenter(event.target.value)} />
@@ -153,7 +155,7 @@ function PairContent({ params }: { params: ModelParams }) {
     <details className="advanced-settings" style={{ marginTop: 0 }}>
       <summary>Допущения и источники формул</summary>
       <ul style={{ paddingLeft: 20, marginTop: 12 }}>{report.assumptions.map(text => <li key={text}>{text}</li>)}</ul>
-      <p className="field-help" style={{ marginTop: 12 }}>Червячные и циклоидальные пары этим модулем не проверяются.</p>
+      <p className="field-help" style={{ marginTop: 12 }}>Конические, червячные и циклоидальные пары этим модулем не проверяются.</p>
       <p style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 10 }}>{report.sources.map(source => <a className="inline-link" key={source.url} href={source.url} target="_blank" rel="noreferrer">{source.title}</a>)}</p>
     </details>
     <div className="dialog-action-row">

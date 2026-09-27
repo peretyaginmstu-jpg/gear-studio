@@ -24,11 +24,16 @@ export function useGearTool(params: ModelParams, onApply: (params: ModelParams) 
         cycloidRollingRadius: { type: 'number', exclusiveMinimum: 0, description: 'Радиус производящей окружности в мм; не больше m·z/4' },
         bevelMateTeeth: { type: 'integer', minimum: 6, maximum: 250, description: 'Число зубьев партнёра для определения делительного конуса' },
         bevelShaftAngleDeg: { type: 'number', exclusiveMinimum: 0, exclusiveMaximum: 180, description: 'Угол пересекающихся осей; оба делительных конуса острые' },
+        internalCutterTeeth: { type: 'integer', minimum: 6, maximum: 249, description: 'Принятый долбяк внутреннего прямозубого; zс < z, не измерено по фото' },
+        internalCutterProfileShift: { type: 'number', minimum: -.8, maximum: 1 },
+        internalCutterAddendumCoefficient: { type: 'number', minimum: .5, maximum: 2 },
+        internalCutterTipRadiusCoefficient: { type: 'number', minimum: .05, maximum: .8 },
+        internalCutterThinning: { type: 'number', minimum: 0, description: 'Утонение долбяка в мм; только internal' },
       }, additionalProperties: false },
       annotations: { readOnlyHint: false, untrustedContentHint: false },
       execute: async (input: unknown) => {
         if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('Ожидается объект параметров.');
-        const allowed = ['kind', 'teeth', 'module', 'width', 'bore', 'pressureAngleDeg', 'helixAngleDeg', 'profileShift', 'backlash', 'wormStarts', 'wormDiameterFactor', 'wormHand', 'cycloidRollingRadius', 'bevelMateTeeth', 'bevelShaftAngleDeg'];
+        const allowed = ['kind', 'teeth', 'module', 'width', 'bore', 'pressureAngleDeg', 'helixAngleDeg', 'profileShift', 'backlash', 'wormStarts', 'wormDiameterFactor', 'wormHand', 'cycloidRollingRadius', 'bevelMateTeeth', 'bevelShaftAngleDeg', 'internalCutterTeeth', 'internalCutterProfileShift', 'internalCutterAddendumCoefficient', 'internalCutterTipRadiusCoefficient', 'internalCutterThinning'];
         if (Object.keys(input).some(k => !allowed.includes(k))) throw new Error('Неизвестный параметр.');
         const patch = input as Partial<ModelParams>;
         if (patch.kind !== undefined && !Object.hasOwn(modelNames, patch.kind)) throw new Error('Неизвестный тип.');
@@ -37,9 +42,10 @@ export function useGearTool(params: ModelParams, onApply: (params: ModelParams) 
         if (!check.valid) throw new Error('Некорректная сетка');
         state.current.onApply(p);
         await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-        return { appVersion: '0.6.0', journey: { stage: 'review', requiresModelConfirmation: true }, parameters: mesh.params, dimensions: modelDimensionsForReport(mesh),
+        return { appVersion: '0.7.0', journey: { stage: 'review', requiresModelConfirmation: true }, parameters: mesh.params, dimensions: modelDimensionsForReport(mesh),
           wormDimensions: 'wormDimensions' in mesh ? mesh.wormDimensions : null,
           cycloidalDimensions: 'cycloidalDimensions' in mesh ? mesh.cycloidalDimensions : null,
+          internalCutterGeometry: mesh.internalCutterGeometry ?? null, internalRootDiagnostics: mesh.profile.internalRootDiagnostics ?? null,
           bevelDimensions: 'bevelDimensions' in mesh ? mesh.bevelDimensions : null, warnings: mesh.warnings, meshValid: check.valid };
       },
     }, { signal: lifecycle.signal });

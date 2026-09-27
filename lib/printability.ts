@@ -14,7 +14,7 @@ export function assessPrint(mesh:ModelMesh,validation:MeshValidation,s:PrintSett
  const fit=(size[0]+10<=s.bedX&&size[1]+10<=s.bedY)||(size[1]+10<=s.bedX&&size[0]+10<=s.bedY);
  const d=mesh.dimensions,p=mesh.params,worm='wormDimensions' in mesh?mesh.wormDimensions:null,cycloidal='cycloidalDimensions' in mesh?mesh.cycloidalDimensions:null,bevel='bevelDimensions' in mesh?mesh.bevelDimensions:null;
  const internal=p.kind==='internal'||p.kind==='internal-helical',rack=p.kind==='rack'||p.kind==='helical-rack';
- const wall=bevel?bevel.minimumRadialBoreWall:internal?(p.rimThickness??3*p.module):rack?(p.rackBaseHeight??3*p.module):(d.rootDiameter-p.bore)/2;
+ const wall=bevel?bevel.minimumRadialBoreWall:internal?(d.outsideDiameter-d.rootDiameter)/2:rack?(p.rackBaseHeight??3*p.module):(d.rootDiameter-p.bore)/2;
  const fmt=(n:number)=>n.toLocaleString('ru-RU',{maximumFractionDigits:2});
  const orientation=bevel?'Большой плоский торец лежит на столе при z = 0; проверяется фактическая осевая высота, а не ширина по образующей.':rack?'Текущая ориентация: ширина рейки по оси Z.':'Текущая ориентация: ось детали вертикальна.';
  const checks:PrintCheck[]=[
@@ -47,7 +47,7 @@ export function assessPrint(mesh:ModelMesh,validation:MeshValidation,s:PrintSett
  else if(bevel)checks.push({id:'overhang',label:'Конические зубья и опоры',status:'warning',detail:'Корпус имеет плоское основание, но наружная нижняя часть зубьев выступает за корневой круг. Проверьте её нависания и периметры малого торца в слайсере; при необходимости опоры не должны повреждать рабочие боковины.'});
  else if(['helical','herringbone','internal-helical','helical-rack'].includes(p.kind))checks.push({id:'overhang',label:'Наклон и опоры',status:'warning',detail:'Проверьте нависания и прилегание первого слоя в слайсере. Следы опор на рабочих боковинах могут ухудшить зацепление.'});
  if(mesh.warnings.some(w=>w.code==='UNDERCUT'))checks.push({id:'undercut',label:'Подрезание зуба',status:'warning',detail:'Есть риск подрезания. Проверьте профиль и ответное колесо до изготовления.'});
- const limitations=mesh.warnings.filter(w=>w.code==='SIMPLIFIED_ROOT'||w.code==='INTERNAL_PAIR'||w.code==='WORM_SHARP_TRANSITIONS'||w.code==='WORM_PAIR_REQUIRED'||w.code==='CYCLOIDAL_TOOTH_SYSTEM'||w.code==='CYCLOIDAL_PAIR_REQUIRED'||w.code==='BEVEL_TOOTH_SYSTEM'||w.code==='BEVEL_PAIR_REQUIRED');
+ const limitations=mesh.warnings.filter(w=>w.code==='GENERATED_INTERNAL_ROOT'||w.code==='SIMPLIFIED_ROOT'||w.code==='INTERNAL_PAIR'||w.code==='WORM_SHARP_TRANSITIONS'||w.code==='WORM_PAIR_REQUIRED'||w.code==='CYCLOIDAL_TOOTH_SYSTEM'||w.code==='CYCLOIDAL_PAIR_REQUIRED'||w.code==='BEVEL_TOOTH_SYSTEM'||w.code==='BEVEL_PAIR_REQUIRED');
  if(limitations.length)checks.push({id:'geometry',label:'Ограничения геометрии',status:'warning',detail:limitations.map(w=>w.message).join(' ')});
  return {status:checks.some(c=>c.status==='fail')?'fail':checks.some(c=>c.status==='warning')?'warning':'pass',size,checks,volumeMm3:validation.signedVolume,material:s.material,disclaimer:'Это геометрическая оценка пробной печати. Прочность, момент, ресурс, точность посадок и работа с ответной деталью не подтверждены.'};
 }

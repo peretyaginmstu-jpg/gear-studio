@@ -12,7 +12,7 @@ export interface ModelProvenance { origin: string; evidence: unknown }
 export function createModelPassport(mesh: ModelMesh, validation: MeshValidation, provenance: ModelProvenance,
   preset: ExportPreset | null = null) {
   return {
-    schema: 'zatseplenie.gear.v5', appVersion: '0.6.0', units: 'mm',
+    schema: 'zatseplenie.gear.v6', appVersion: '0.7.0', units: 'mm',
     origin: provenance.origin, evidence: provenance.evidence, parameters: mesh.params,
     artifact: { purpose: preset ? 'STL-export' : 'current-preview-model', preset,
       requestedQuality: preset ? exportPresets[preset].quality : null,
@@ -25,6 +25,7 @@ export function createModelPassport(mesh: ModelMesh, validation: MeshValidation,
     bevelDimensions: 'bevelDimensions' in mesh ? mesh.bevelDimensions : null,
     bevelDiagnostics: 'bevelDiagnostics' in mesh ? mesh.bevelDiagnostics : null,
     spatialGeometry: modelSpatialGeometryForReport(mesh), rootDiagnostics: mesh.profile.rootDiagnostics ?? null,
+    internalCutterGeometry: mesh.internalCutterGeometry ?? null, internalRootDiagnostics: mesh.profile.internalRootDiagnostics ?? null,
     meshValidation: validation, warnings: mesh.warnings,
     verified: ['Аналитический профиль в заданной области', 'Топология треугольной сетки'],
     notVerified: ['Ответное колесо и контакт пары', 'Прочность и ресурс', 'Точность изготовления', 'Точное соответствие образцу по фото'],

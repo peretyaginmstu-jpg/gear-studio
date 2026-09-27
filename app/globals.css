@@ -146,6 +146,7 @@ body{background:#fff;color:#172130}
  .engineering-dialog{max-width:calc(100vw - 24px)!important;max-height:90dvh!important;padding:23px 20px!important}.export-dialog .primary-button,.export-dialog .secondary-button{white-space:normal;min-height:48px;text-align:center}
 }
 @media(prefers-reduced-motion:reduce){.panel-disclosure>svg{transition:none}html{scroll-behavior:auto}}
+.cutter-settings{border:1px solid var(--line,#dedbd3);border-radius:10px;padding:18px;margin:24px 0 0;min-width:0}.cutter-settings legend{font-size:14px;font-weight:600;padding:0 7px}.cutter-settings>.field-help:first-of-type{margin:0 0 18px}.cutter-settings .input-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 14px}.cutter-settings .number-field{min-width:0}.cutter-settings input{min-width:0}
 /* v0.6: explicit input → build → review → delivery, preserving the v0.5 palette. */
 [hidden]{display:none!important}
 .studio-v6 .brand{padding:0;border:0;background:none;color:inherit}

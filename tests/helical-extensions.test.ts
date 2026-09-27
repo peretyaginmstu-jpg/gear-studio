@@ -72,7 +72,7 @@ test('internal helix retains the actual complementary involute and matching radi
     close(measuredThickness,expectedThickness,2e-12);checked++;
   }
   assert.ok(checked>=30);
-  assert.ok(profile.warnings.some(w=>w.code==='SIMPLIFIED_ROOT'&&w.message.includes('долбяком')));
+  assert.ok(profile.warnings.some(w=>w.code==='SIMPLIFIED_ROOT'&&w.message.includes('долбяка')));
   assert.ok(profile.warnings.some(w=>w.code==='INTERNAL_PAIR'));
   assert.equal(profile.rootDiagnostics,undefined);
 });
@@ -132,12 +132,17 @@ test('helical rack envelope and volume include axial skew without adding or losi
   assert.equal(check.valid,true,JSON.stringify(check));
 });
 
-test('zero helix exactly retains straight internal and rack dimensions and profile',()=>{
-  for(const [kind,straight] of [['internal-helical','internal'],['helical-rack','rack']] as const) {
+test('zero helical rack retains straight rack; internal helix stays in its separate legacy root mode',()=>{
+  for(const [kind,straight] of [['helical-rack','rack']] as const) {
     const params=p({kind,teeth:60,helixAngleDeg:0}),a=buildGearProfile(params),b=buildGearProfile({...params,kind:straight});
     assert.deepEqual(a.dimensions,b.dimensions);assert.deepEqual(a.outer,b.outer);assert.deepEqual(a.hole,b.hole);
     assert.ok(validateMesh(buildGearMesh(params)).valid);
   }
+  const params=p({kind:'internal-helical',teeth:60,helixAngleDeg:0}),legacy=buildGearProfile(params),generated=buildGearProfile({...params,kind:'internal'});
+  close(legacy.dimensions.rootDiameter,params.module*(params.teeth+2.5+2*params.profileShift));
+  assert.equal(legacy.internalRootDiagnostics,undefined);assert.ok(generated.internalRootDiagnostics);
+  assert.notEqual(legacy.dimensions.rootDiameter,generated.dimensions.rootDiameter);
+  close(legacy.dimensions.tipDiameter,generated.dimensions.tipDiameter);
 });
 
 test('both extensions give closed, oriented, positive meshes after binary STL welded roundtrip',()=>{

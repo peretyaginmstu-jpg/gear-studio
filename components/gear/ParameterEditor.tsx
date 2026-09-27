@@ -3,6 +3,7 @@ import { RotateCcw, SlidersHorizontal, ArrowUpRight } from 'lucide-react';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { isHelicalKind, isInternalKind, isRackKind, modelNames, type ModelKind, type ModelParams } from '@/lib/model';
 import { useActivePopup } from './useActivePopup';
+import { InternalCutterFields } from './InternalCutterFields';
 
 export function ParameterEditor({ active = true, params, onChange, onKind, onHand, onReset, onReference }: {
   active?: boolean; params: ModelParams; onChange: (key: keyof ModelParams, value: number) => void;
@@ -36,6 +37,8 @@ export function ParameterEditor({ active = true, params, onChange, onKind, onHan
         <NumberField label="Угол осей" symbol="Σ, °" value={params.bevelShaftAngleDeg ?? 90} min={1} max={179} onChange={v => onChange('bevelShaftAngleDeg', v)} /></>}
     </div>
     {helical && <p className="field-help">Знак β меняет направление винтовой линии.</p>}
+    {params.kind === 'internal' && <InternalCutterFields params={params} onChange={onChange} />}
+    {params.kind === 'internal-helical' && <p className="field-help">Отдельный режим: торцевая эвольвента до окружности впадин без переходной поверхности косозубого долбяка. Плоская огибающая прямозубого инструмента здесь не используется.</p>}
     {cycloidal && <p className="field-help">Один радиус для эпициклоиды и гипоциклоиды; по умолчанию min(2m, R/2). ha = m, hf = 1,25m. Постоянный угол давления неприменим, x = 0.</p>}
     {bevel && <p className="field-help">Сферическая эвольвента; ha = mₑ, hf = 1,25mₑ. Впадина не ниже основного конуса; галтель и переходная поверхность не построены. Партнёр задаёт делительный конус, но контакт пары не рассчитан.</p>}
     <details className="advanced-settings"><summary><SlidersHorizontal size={16} /> Тонкая настройка</summary>

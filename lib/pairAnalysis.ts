@@ -1,5 +1,6 @@
 import { buildGearProfile, involute, type GearKind, type GearParams, type GearProfile } from './gearMath.ts';
 import type { ModelParams } from './model.ts';
+import type { InternalCutterGeometry } from './generatedInternalRoot.ts';
 
 export type PairStatus = 'pass' | 'warning' | 'fail' | 'unsupported';
 export type PairFamily = 'external_cylindrical' | 'internal_cylindrical' | 'rack_pinion' | 'unsupported';
@@ -28,6 +29,7 @@ export interface PairReport {
   dimensions: PairDimensions;
   assumptions: string[];
   sources: { title: string; url: string }[];
+  profileGeometry: { part: number; parameters: GearParams; rootRadiusMm: number | null; activeInvoluteJoinRadiusMm: number | null; internalCutterGeometry: InternalCutterGeometry | null }[];
 }
 export interface PairInput { first: ModelParams; second: ModelParams; centerDistanceMm?: number }
 
@@ -53,6 +55,8 @@ function gearParams(p: ModelParams): GearParams {
     width: p.width, bore: p.bore, profileShift: p.profileShift, backlash: p.backlash,
     rimThickness: p.rimThickness, rackBaseHeight: p.rackBaseHeight,
     toolTipRadiusCoefficient: p.toolTipRadiusCoefficient, profileTolerance: p.profileTolerance,
+    ...(p.kind === 'internal' ? { internalCutterTeeth: p.internalCutterTeeth, internalCutterProfileShift: p.internalCutterProfileShift,
+      internalCutterAddendumCoefficient: p.internalCutterAddendumCoefficient, internalCutterTipRadiusCoefficient: p.internalCutterTipRadiusCoefficient, internalCutterThinning: p.internalCutterThinning } : {}),
   };
 }
 
@@ -70,12 +74,12 @@ function inverseInvolute(value: number): number {
  * Ideal, unloaded parallel-axis geometry in the existing model's normal system.
  * KHK Tables 4.3/4.6/4.9: working angle and profile shift; SDP/SI §11: contact.
  * Backlash is derived from the two actual tooth arcs at working radii, not a fit table.
- * No strength, process tolerance, internal fillet or assembly certification is implied.
+ * Generated internal spur joins bound active contact; no strength or assembly certification.
  */
 export function analyzeGearPair({ first, second, centerDistanceMm }: PairInput): PairReport {
   const dimensions = emptyDimensions(), checks: PairCheck[] = [];
   const report: PairReport = {
-    status: 'pass', family: 'unsupported', dimensions, checks,
+    status: 'pass', family: 'unsupported', dimensions, checks, profileGeometry: [],
     assumptions: [
       'Идеальная геометрия без нагрузки; оси параллельны, общая ширина полностью совмещена и фаза зубьев настроена.',
       'Уменьшение нормальной толщины задано отдельно для каждой детали. Рассчитанный поперечный зазор не является допуском изготовления.',
@@ -120,9 +124,14 @@ export function analyzeGearPair({ first, second, centerDistanceMm }: PairInput):
     try {
       const profile = buildGearProfile(gearParams(p), 6);
       profiles.push(profile);
+      const join = profile.internalRootDiagnostics?.joinRadius ?? profile.rootDiagnostics?.joinRadius;
+      report.profileGeometry.push({ part: index + 1, parameters: profile.params,
+        rootRadiusMm: rack(p) ? null : profile.dimensions.rootDiameter / 2,
+        activeInvoluteJoinRadiusMm: rack(p) ? null : join ?? profile.dimensions.rootDiameter / 2,
+        internalCutterGeometry: profile.internalCutterGeometry ?? null });
       add(`geometry-${index + 1}`, `Профиль детали ${index + 1}`, 'pass',
-        profile.rootDiagnostics
-          ? `Профиль построен; стык эвольвенты с огибающей инструмента при r = ${fmt(profile.rootDiagnostics.joinRadius)} мм.`
+        join !== undefined
+          ? `Профиль построен; стык эвольвенты с огибающей инструмента при r = ${fmt(join)} мм.${profile.internalCutterGeometry ? ` Долбяк zс=${profile.internalCutterGeometry.tool.teeth} задан или принят, по фото не установлен.` : ''}`
           : rack(p) ? 'Прямолинейные боковины рейки до острых углов впадин.' : 'Эвольвентные боковины до окружности впадин; галтель внутреннего колеса не построена.');
       for (const warning of profile.warnings.filter(w => w.code === 'UNDERCUT'))
         add(`profile-${index + 1}-${warning.code}`, `Ограничение детали ${index + 1}`, 'warning', warning.message);
@@ -235,13 +244,15 @@ export function analyzeGearPair({ first, second, centerDistanceMm }: PairInput):
       const qe = rollLength(ep.tipDiameter / 2, ep.baseDiameter / 2);
       const qi = rollLength(ip.tipDiameter / 2, ip.baseDiameter / 2);
       const qj = rollLength(externalProfile.rootDiagnostics!.joinRadius, ep.baseDiameter / 2);
-      const qf = rollLength(ip.rootDiameter / 2, ip.baseDiameter / 2);
+      const qf = rollLength(internalProfile.internalRootDiagnostics?.joinRadius ?? ip.rootDiameter / 2, ip.baseDiameter / 2);
       marginCheck('pinion-root', 'Контакт у корня наружного колеса', qi - tangentSpan - qj, 'Вершина внутреннего зуба должна контактировать с эвольвентой наружного зуба выше его переходной кривой.');
-      marginCheck('ring-root', 'Контакт у впадины внутреннего колеса', qf - tangentSpan - qe, 'Проверена только граница текущей эвольвенты по окружности впадин, без галтели долбяка.');
+      marginCheck('ring-root', 'Контакт у впадины внутреннего колеса', qf - tangentSpan - qe, internalProfile.internalRootDiagnostics
+        ? 'Рабочая эвольвента ограничена реальным стыком с огибающей принятого долбяка; переходная кривая не включена в путь контакта.'
+        : 'Косозубой внутренний профиль: граница текущей эвольвенты по окружности впадин, без производящей переходной поверхности.');
       pathStart = Math.max(qi - tangentSpan, qj);
       pathEnd = Math.min(qe, qf - tangentSpan);
       dimensions.minimumRadialClearanceMm = Math.min(ip.rootDiameter / 2 - a - ep.tipDiameter / 2, ip.tipDiameter / 2 - a - ep.rootDiameter / 2);
-      add('internal-assembly', 'Интерференция и сборка внутренней пары', 'warning', 'Галтель долбяка, трохоидальная и обрезная интерференция, а также траектория сборки не проверены. Положительные запасы по эвольвенте не подтверждают отсутствие этих препятствий.');
+      add('internal-assembly', 'Интерференция и сборка внутренней пары', 'warning', `${internalProfile.internalRootDiagnostics ? 'Производящая переходная кривая построена для принятого долбяка. ' : 'Производящая переходная поверхность косозубого долбяка не построена. '}Контакт ответного колеса с этой областью, внеполюсная интерференция и траектория сборки пары не проверены. Проверка инструмента не является проверкой ответного колеса.`);
     } else {
       const qa1 = rollLength(d1.tipDiameter / 2, rb1), qa2 = rollLength(d2.tipDiameter / 2, rb2);
       const qj1 = rollLength(g1.rootDiagnostics!.joinRadius, rb1), qj2 = rollLength(g2.rootDiagnostics!.joinRadius, rb2);

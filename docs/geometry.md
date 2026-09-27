@@ -1,6 +1,6 @@
-# Gear mathematics kernel v0.3, 2026-09-27
+# Gear mathematics kernel v0.7
 
-For the involute kernel copy **both `gearMath.ts` and `generatedRoot.ts`**. Application integration dispatches through `model.ts`, which also requires `wormGeometry.ts` and `cycloidalGeometry.ts`. No third-party runtime dependencies. Source geometry uses double-precision JS numbers; final positions use Float32Array for WebGL and STL.
+For the involute kernel copy **`gearMath.ts`, `generatedRoot.ts` and `generatedInternalRoot.ts`**. Application integration dispatches through `model.ts`, which also requires `wormGeometry.ts`, `cycloidalGeometry.ts` and `bevelGeometry.ts`. No third-party runtime dependencies. Source geometry uses double-precision JS numbers; final positions use Float32Array for WebGL and STL.
 
 ## API
 
@@ -11,14 +11,14 @@ const result = validateMesh(mesh);
 const stl: ArrayBuffer = exportBinarySTL(mesh);
 ```
 
-`deriveGear(params)` → `{params,dimensions,warnings}`. `buildGearProfile(params, samples)` adds `outer`, `hole`, and optional `rootDiagnostics`. Both contours are CCW and omit a duplicate closing point. `buildGearMesh` adds positions, indices, profile and tessellation. Errors are `GearGeometryError` with a stable `code` and Russian explanatory message. Export refuses a mesh failing its topology checks. `warnings` on the generated mesh contain the actual root model; use these for the UI.
+`deriveGear(params)` → `{params,dimensions,warnings}` and optional `internalCutterGeometry`. `buildGearProfile(params, samples)` adds `outer`, `hole`, and optional `rootDiagnostics` (external) or `internalRootDiagnostics` (generated internal spur). Both contours are CCW and omit a duplicate closing point. `buildGearMesh` adds positions, indices, profile and tessellation. Errors are `GearGeometryError` with a stable `code` and Russian explanatory message. Export refuses a mesh failing its topology checks. `warnings` on the generated mesh contain the actual root model; use these for the UI.
 
 Units are mm. Module and pressure angle are **normal** for helical/herringbone. `backlash` is the normal tooth thickness reduction **on this gear**, not the backlash of an assembled pair. Positive `helixAngleDeg` increases polar angle with axial z. Internal `profileShift` uses rack-shift sign convention: positive x makes internal teeth thinner. `bore` is for external gears; hide it for internal/rack. `rimThickness` and `rackBaseHeight` default to 3m.
 
 ## Geometry delivered
 
 - External spur, helical and herringbone: analytic involute working flanks plus the secondary envelope of an explicitly specified rounded rack cutter. The cutter-tip circle in the normal plane projects to a transverse ellipse for helical gears. Default tool tip radius is 0.3m; this is an **assumed input tool**, not a recovered or universally standardized radius. `toolTipRadiusCoefficient` can specify it.
-- Internal spur and helical: complete analytic involute flanks from tooth tip to root; sharp intersection with the root circle. A generating-pinion root fillet is not included. Below-base-circle internal tips are rejected.
+- Internal spur: involute flanks and the exact envelope of an explicitly assumed circular-tipped pinion cutter, with physical root radius, analytical join, global conservative trimming guards and C² interpolation bounds. See [full derivation and tests](internal-root-geometry.md). Internal helical retains the separate legacy transverse involute to its nominal root circle; a spatial cutter-generated transition is not included. Below-base-circle internal tips are rejected.
 - Straight and helical rack: straight-flank trapezoidal teeth with exact pressure angle and flat tip/root; sharp roots. Profile shift changes the reference-line datum. The helical rack uses the transverse pressure angle and linear sweep x(z)=x₀+z·tanβ; rackAxialOffset=b·tanβ and its bounding length includes this skew.
 - Herringbone: opposite swept helices share one middle section, so the result is a single watertight shell. No middle relief groove.
 
@@ -26,7 +26,7 @@ The generated external root checks positional joining, tangent joining and radia
 
 ## Formulas and source checks
 
-Reference equations: m_t=m_n/cosβ; tanα_t=tanα_n/cosβ; d=z·m_t; d_b=d·cosα_t; external d_a=d+2m_n(1+x), d_f=d−2m_n(1.25−x); internal d_a=d−2m_n(1−x), d_f=d+2m_n(1.25+x). External s_n=m_n(π/2+2x·tanα_n)−j_n, s_t=s_n/cosβ. Involute invα=tanα−α. Helical sweep dθ/dz=tanβ/r.
+Reference equations: m_t=m_n/cosβ; tanα_t=tanα_n/cosβ; d=z·m_t; d_b=d·cosα_t; external d_a=d+2m_n(1+x), d_f=d−2m_n(1.25−x); internal d_a=d−2m_n(1−x). The legacy internal helix uses d_f=d+2m_n(1.25+x); generated internal spur uses d_f=2(a_generating+r_tip_cutter), including both thickness reductions and the chosen cutter. External s_n=m_n(π/2+2x·tanα_n)−j_n, s_t=s_n/cosβ. Involute invα=tanα−α. Helical sweep dθ/dz=tanβ/r.
 
 Verified against [KHK Calculation of Gear Dimensions](https://khkgears.net/gear-knowledge/gear-technical-reference/calculation-gear-dimensions/) and [SDP/SI Elements of Metric Gear Technology, sections 4–6](https://www.sdp-si.com/resources/elements-of-metric-gear-technology/page3.php). KHK indexed tables provided standard spur dimensions and normal-system helical transformations. SDP/SI explains generating tools, profile shift, undercut and why internal cutter geometry matters. Direct web opening of SDP/SI returned 403; its indexed primary-source text was available. Some KHK HTML responses were compressed/broken through the web reader, so indexed primary-source tables were used.
 
@@ -34,7 +34,7 @@ Rounded rack envelope is an explicit mathematical construction, adapted from the
 
 ## What accuracy means here
 
-`profileTolerance` controls adaptive **2D** contour subdivision. Each segment is checked at 1/4, 1/2 and 3/4 parameter points; this is a measured sampling criterion, not a formal global Hausdorff guarantee. Default min(0.01mm, 0.005m). Root/involute positional joins are checked at max(1e−7mm,1e−7m); invalid joins fail. Numeric root diagnostics expose join error, tangent difference and sampled chord error. The helix is tessellated axially (at most 1.5 degrees per slice); no certified 3D error tolerance is claimed. STL is unitless by format convention; coordinates here are mm.
+For the external rounded-rack module, `profileTolerance` controls adaptive **2D** contour subdivision. Each segment is checked at 1/4, 1/2 and 3/4 parameter points; this is a measured sampling criterion, not a formal global Hausdorff guarantee. Default min(0.01mm, 0.005m). Root/involute positional joins are checked at max(1e−7mm,1e−7m); invalid joins fail. Numeric root diagnostics expose join error, tangent difference and sampled chord error. The generated internal spur uses the separate analytic C² chord bound and default 0.002m described in `internal-root-geometry.md`. The helix is tessellated axially (at most 1.5 degrees per slice); no certified 3D error tolerance is claimed. STL is unitless by format convention; coordinates here are mm.
 
 Closed mesh verification does not establish pair interference, center distance, contact ratio, assembly, machining tolerance, load capacity, printer dimensional accuracy or service life. No octoid or spiral bevel, worm wheel, eccentric pin-reducer, hypoid or noncircular geometry is generated. Exact spherical-involute straight bevel, ZA worm and cylindrical cycloidal geometry are implemented separately in `bevelGeometry.ts`, `wormGeometry.ts` and `cycloidalGeometry.ts`; the UI dispatches through `model.ts`. Other unsupported families remain unavailable for STL.
 
@@ -86,7 +86,7 @@ A separately sampled circular bore and one-tooth sector triangulation avoid zero
 
 ## Separate pair report
 
-The UI's `PairDialog` uses `pairAnalysis.ts` for ideal unloaded involute external, internal and rack pairs. It reports the given two parts, actual or calculated operating distance, compatibility, backlash, radial clearance and contact ratios with stated restrictions. Its JSON is separate from the single-part passport. Unsupported worm and cycloidal pairs return an explicit unsupported status, never an involute substitute. See `pair-analysis.md` for equations and limits.
+The UI's `PairDialog` uses `pairAnalysis.ts` for ideal unloaded involute external, internal and rack pairs. It reports the given two parts, actual or calculated operating distance, compatibility, backlash, radial clearance and contact ratios with stated restrictions. Its JSON is separate from the single-part passport. Unsupported bevel, worm and cycloidal pairs return an explicit unsupported status, never an involute substitute. See `pair-analysis.md` for equations and limits.
 
 ## Straight bevel module
 

@@ -100,9 +100,27 @@ test('internal pair uses difference of shifts and the opposite working-thickness
 
 test('internal model root boundaries use both directions of radial clearance', () => {
   const report = analyzeGearPair({ first: p({ teeth: 36, profileShift: .1 }), second: p({ kind: 'internal', teeth: 96, profileShift: .3 }), centerDistanceMm: 61 });
-  // ring root=99.1, pinion tip=38.2; ring tip=94.6, pinion root=33.7.
-  close(report.dimensions.minimumRadialClearanceMm, Math.min(99.1 - 61 - 38.2, 94.6 - 61 - 33.7));
+  // The second direction controls this case: ring tip=94.6, pinion root=33.7.
+  close(report.dimensions.minimumRadialClearanceMm, 94.6 - 61 - 33.7);
   assert.equal(check(report, 'radial-clearance').status, 'fail');
+});
+
+test('internal active involute ends at its generated join; explicit cutter inputs survive the pair adapter', () => {
+  const first = p({ teeth: 70 }), second = p({ kind: 'internal', teeth: 80, internalCutterTeeth: 24,
+    internalCutterProfileShift: 0, internalCutterAddendumCoefficient: 1, internalCutterTipRadiusCoefficient: .3, internalCutterThinning: 0 });
+  const report = analyzeGearPair({ first, second }), rb = 80 * Math.cos(20 * rad), rj = 81.60704861986312;
+  // The upper end is the ring join; the lower end is the separately verified rack-generated pinion join.
+  const externalJoin = 68.14071575884866, externalBase = 70 * Math.cos(20 * rad);
+  const expected = (Math.sqrt(rj * rj - rb * rb) - 10 * Math.sin(20 * rad) - Math.sqrt(externalJoin ** 2 - externalBase ** 2)) / (2 * Math.PI * Math.cos(20 * rad));
+  close(report.dimensions.transverseContactRatio, expected);
+  close(report.profileGeometry[1].activeInvoluteJoinRadiusMm, rj);
+  close(report.profileGeometry[1].rootRadiusMm, 82.10910226512397);
+  close(report.dimensions.minimumRadialClearanceMm, .10910226512395127);
+  assert.equal(report.profileGeometry[1].parameters.internalCutterAddendumCoefficient, 1);
+  assert.match(check(report, 'ring-root').detail, /реальным стыком/);
+  assert.equal(check(report, 'ring-root').status, 'warning');
+  assert.ok(analyzeGearPair({ first, second: { ...second, internalCutterAddendumCoefficient: 1.25 } }).dimensions.transverseContactRatio! > expected);
+  assert.equal(analyzeGearPair({ first: p(), second: { ...second, teeth: 48, internalCutterTeeth: 40, backlash: 0 } }).status, 'fail');
 });
 
 test('generated root joins restrict contact without claiming a proved contour collision', () => {

@@ -34,6 +34,7 @@ export function ModelInspection({ model, onReference }: { model: BuiltModel; onR
   const { mesh, validation, params, origin } = model, d = mesh.dimensions, error = null;
   const worm = 'wormDimensions' in mesh ? mesh.wormDimensions : null;
   const cycloidal = 'cycloidalDimensions' in mesh ? mesh.cycloidalDimensions : null, bevel = 'bevelDimensions' in mesh ? mesh.bevelDimensions : null;
+  const internalRoot = mesh.profile.internalRootDiagnostics;
   const rack = isRackKind(params.kind), isWorm = params.kind === 'worm', isBevel = params.kind === 'bevel';
   return <>
         <details className="engineering-details"><summary><span>{mesh ? <Check size={20} /> : <AlertTriangle size={20} />} Геометрия и проверка</span><span className="mesh-count">{validation ? `${fmt(validation.triangles, 0)} треугольников` : 'Требует уточнения'} <ChevronDown size={17} /></span></summary>
@@ -45,6 +46,7 @@ export function ModelInspection({ model, onReference }: { model: BuiltModel; onR
             <Dimension label={isWorm ? 'Осевой размер вершины' : isBevel ? 'Хорда малой вершины' : cycloidal ? 'Дуга вершины' : 'Толщина вершины'} value={bevel?.innerTipChordThickness ?? worm?.axialTipThickness ?? d.tipThickness} digits={3} />
             {cycloidal && <><Dimension label="Производящий радиус" value={cycloidal.rollingRadius} /><div><dt>Постоянный угол α</dt><dd>Неприменим</dd></div></>}
             {worm && <><Dimension label="Ход витка" value={worm.lead} /><div><dt>Угол подъёма γ</dt><dd>{fmt(worm.leadAngleDeg)}°</dd></div></>}
+            {internalRoot && <><div><dt>Принятый долбяк</dt><dd>zс = {internalRoot.tool.teeth}</dd></div><Dimension label="Расстояние обката инструмента" value={internalRoot.generatingCenterDistance} digits={4} /><Dimension label="Радиус стыка эвольвенты" value={internalRoot.joinRadius} digits={4} /><Dimension label="Радиус вершины долбяка" value={internalRoot.toolTipRadius} digits={3} /></>}
             {bevel && <><div><dt>Делительный конус δ₁</dt><dd>{fmt(bevel.pitchConeAngleDeg)}°</dd></div><div><dt>Основной конус δᵦ</dt><dd>{fmt(bevel.baseConeAngleDeg)}°</dd></div><Dimension label="Конусное расстояние Rₑ" value={bevel.outerConeDistance} /><Dimension label="Малый модуль mᵢ" value={bevel.innerModule} digits={3} /><Dimension label="Высота по оси H" value={bevel.axialExtent} /></>}
             {['helical', 'herringbone', 'internal-helical', 'helical-rack'].includes(params.kind) && <Dimension label="Торцевой модуль" value={d.transverseModule} digits={3} />}
           </dl> : <p className="inline-error">{error}</p>}
@@ -55,6 +57,7 @@ export function ModelInspection({ model, onReference }: { model: BuiltModel; onR
             {'cycloidalDiagnostics' in mesh && <p>Верхняя граница ошибки плоской хорды: {fmt(mesh.cycloidalDiagnostics.maxChordErrorBound, 5)} мм при допуске {fmt(mesh.cycloidalDiagnostics.profileTolerance, 4)} мм до Float32.</p>}
             {'bevelDiagnostics' in mesh && <p>Границы дискретизации до Float32: боковина {fmt(mesh.bevelDiagnostics.maxFlankChordErrorBound, 5)} мм; задний конус {fmt(mesh.bevelDiagnostics.maxEndCapErrorBound, 5)} мм при допуске {fmt(mesh.bevelDiagnostics.profileTolerance, 4)} мм.</p>}
             {mesh.profile.rootDiagnostics && <p>Выборочная ошибка хорды профиля: {fmt(mesh.profile.rootDiagnostics.maxSampledChordError, 5)} мм при заданном {fmt(mesh.profile.rootDiagnostics.profileTolerance, 3)} мм. Это не класс точности детали.</p>}
+            {internalRoot && <p>Огибающая круглой вершины долбяка. Корень и стык рассчитаны по показанному инструменту; по фото инструмент не установлен. Граница ошибки плоской хорды до Float32: {fmt(internalRoot.maxChordErrorBound, 5)} мм при допуске {fmt(internalRoot.profileTolerance, 4)} мм. Это не класс точности детали.</p>}
             <button className="inline-link" onClick={onReference}>Подробнее о методе</button>
           </div>}
         </details>

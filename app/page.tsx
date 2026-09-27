@@ -133,7 +133,7 @@ export default function Home() {
         <section className="engineering-panel"><ModelInspection model={model} onReference={() => setReference(true)} /></section>
       </div>}
     </main>
-    <footer className="page-footer"><span>ЗАЦЕПЛЕНИЕ <span className="muted">/ инженерная мастерская</span></span><span>Локальные вычисления · Миллиметры · Версия 0.6</span></footer>
+    <footer className="page-footer"><span>ЗАЦЕПЛЕНИЕ <span className="muted">/ инженерная мастерская</span></span><span>Локальные вычисления · Миллиметры · Версия 0.7</span></footer>
     <ReferenceDialog open={reference} onOpenChange={setReference} />
   </div>;
 }

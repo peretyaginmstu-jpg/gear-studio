@@ -1,0 +1,1218 @@
+[
+  {
+    "name": "matrix-19",
+    "params": {
+      "kind": "internal",
+      "teeth": 103,
+      "module": 1,
+      "pressureAngleDeg": 14.5,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": -0.012937236903235283,
+      "backlash": 0.10109397570602595,
+      "internalCutterTeeth": 51,
+      "internalCutterProfileShift": 0.4897346726618707,
+      "internalCutterAddendumCoefficient": 1.1856300406740048,
+      "internalCutterTipRadiusCoefficient": 0.29378001843579116,
+      "internalCutterThinning": 0.015600722709205001
+    }
+  },
+  {
+    "name": "matrix-21",
+    "params": {
+      "kind": "internal",
+      "teeth": 99,
+      "module": 1,
+      "pressureAngleDeg": 20,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": -0.10059868642129002,
+      "backlash": 0.05119277036748826,
+      "internalCutterTeeth": 29,
+      "internalCutterProfileShift": 0.0008072508499026021,
+      "internalCutterAddendumCoefficient": 1.1772342575830408,
+      "internalCutterTipRadiusCoefficient": 0.13019474404864012,
+      "internalCutterThinning": 0.007715795456897467
+    }
+  },
+  {
+    "name": "matrix-22",
+    "params": {
+      "kind": "internal",
+      "teeth": 154,
+      "module": 10,
+      "pressureAngleDeg": 20,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": 0.3946418534964324,
+      "backlash": 0.0582030993886292,
+      "internalCutterTeeth": 50,
+      "internalCutterProfileShift": 0.49841999816708266,
+      "internalCutterAddendumCoefficient": 1.1063483221339994,
+      "internalCutterTipRadiusCoefficient": 0.33444904489442706,
+      "internalCutterThinning": 0.0672732880571857
+    }
+  },
+  {
+    "name": "matrix-36",
+    "params": {
+      "kind": "internal",
+      "teeth": 140,
+      "module": 1,
+      "pressureAngleDeg": 14.5,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": -0.06364870117977259,
+      "backlash": 0.04775065527297556,
+      "internalCutterTeeth": 81,
+      "internalCutterProfileShift": 0.19547903728671367,
+      "internalCutterAddendumCoefficient": 1.054893624072429,
+      "internalCutterTipRadiusCoefficient": 0.17905681431293488,
+      "internalCutterThinning": 0.011466462977696209
+    }
+  },
+  {
+    "name": "matrix-38",
+    "params": {
+      "kind": "internal",
+      "teeth": 174,
+      "module": 0.2,
+      "pressureAngleDeg": 14.5,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": 0.06805989928543571,
+      "backlash": 0.019101847076788546,
+      "internalCutterTeeth": 81,
+      "internalCutterProfileShift": 0.3737410816829651,
+      "internalCutterAddendumCoefficient": 1.069617959286552,
+      "internalCutterTipRadiusCoefficient": 0.11397591857239604,
+      "internalCutterThinning": 0.00273364218743518
+    }
+  },
+  {
+    "name": "matrix-41",
+    "params": {
+      "kind": "internal",
+      "teeth": 176,
+      "module": 3,
+      "pressureAngleDeg": 14.5,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": 0.27441287334077064,
+      "backlash": 0.32018348869867624,
+      "internalCutterTeeth": 98,
+      "internalCutterProfileShift": 0.08488178886473174,
+      "internalCutterAddendumCoefficient": 1.2624288243358024,
+      "internalCutterTipRadiusCoefficient": 0.16124400733970107,
+      "internalCutterThinning": 0.04564125232631341
+    }
+  },
+  {
+    "name": "matrix-44",
+    "params": {
+      "kind": "internal",
+      "teeth": 73,
+      "module": 0.2,
+      "pressureAngleDeg": 25,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": 0.22026100745424632,
+      "backlash": 0.01242383879609406,
+      "internalCutterTeeth": 17,
+      "internalCutterProfileShift": -0.08515042210929098,
+      "internalCutterAddendumCoefficient": 1.129443056730088,
+      "internalCutterTipRadiusCoefficient": 0.2171092342585325,
+      "internalCutterThinning": 0.0003794915140606463
+    }
+  },
+  {
+    "name": "matrix-57",
+    "params": {
+      "kind": "internal",
+      "teeth": 123,
+      "module": 0.2,
+      "pressureAngleDeg": 20,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": 0.18093993435613814,
+      "backlash": 0.0068452087026089434,
+      "internalCutterTeeth": 30,
+      "internalCutterProfileShift": -0.121794206276536,
+      "internalCutterAddendumCoefficient": 1.132022564962972,
+      "internalCutterTipRadiusCoefficient": 0.39363038404844697,
+      "internalCutterThinning": 0.00571657266234979
+    }
+  },
+  {
+    "name": "matrix-58",
+    "params": {
+      "kind": "internal",
+      "teeth": 132,
+      "module": 0.2,
+      "pressureAngleDeg": 14.5,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": 0.04363062959164382,
+      "backlash": 0.012964858839288355,
+      "internalCutterTeeth": 76,
+      "internalCutterProfileShift": 0.30531535237096247,
+      "internalCutterAddendumCoefficient": 1.0510764286736958,
+      "internalCutterTipRadiusCoefficient": 0.25005303481593727,
+      "internalCutterThinning": 0.005971947797108442
+    }
+  },
+  {
+    "name": "matrix-60",
+    "params": {
+      "kind": "internal",
+      "teeth": 148,
+      "module": 3,
+      "pressureAngleDeg": 20,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": 0.5390184349380434,
+      "backlash": 0.18915056887082754,
+      "internalCutterTeeth": 65,
+      "internalCutterProfileShift": -0.16960019688121974,
+      "internalCutterAddendumCoefficient": 1.2987669343478045,
+      "internalCutterTipRadiusCoefficient": 0.24058777429163455,
+      "internalCutterThinning": 0.07074695246061309
+    }
+  },
+  {
+    "name": "matrix-65",
+    "params": {
+      "kind": "internal",
+      "teeth": 74,
+      "module": 10,
+      "pressureAngleDeg": 25,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": 0.5099786947946996,
+      "backlash": 0.39921909710392356,
+      "internalCutterTeeth": 22,
+      "internalCutterProfileShift": 0.29635161086916917,
+      "internalCutterAddendumCoefficient": 1.1151647924561985,
+      "internalCutterTipRadiusCoefficient": 0.10753166652284563,
+      "internalCutterThinning": 0.018039331468753517
+    }
+  },
+  {
+    "name": "matrix-66",
+    "params": {
+      "kind": "internal",
+      "teeth": 194,
+      "module": 1,
+      "pressureAngleDeg": 14.5,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": 0.2000237764790655,
+      "backlash": 0.0385339989233762,
+      "internalCutterTeeth": 25,
+      "internalCutterProfileShift": 0.4585021888371556,
+      "internalCutterAddendumCoefficient": 1.3605608737911097,
+      "internalCutterTipRadiusCoefficient": 0.16091794641688467,
+      "internalCutterThinning": 0.011557995679322629
+    }
+  },
+  {
+    "name": "matrix-70",
+    "params": {
+      "kind": "internal",
+      "teeth": 83,
+      "module": 0.2,
+      "pressureAngleDeg": 20,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": 0.33931911326944836,
+      "backlash": 0.004252693438902498,
+      "internalCutterTeeth": 34,
+      "internalCutterProfileShift": 0.2728505987208336,
+      "internalCutterAddendumCoefficient": 1.15404168831883,
+      "internalCutterTipRadiusCoefficient": 0.1633194494061172,
+      "internalCutterThinning": 0.0055468621817417445
+    }
+  },
+  {
+    "name": "matrix-75",
+    "params": {
+      "kind": "internal",
+      "teeth": 196,
+      "module": 3,
+      "pressureAngleDeg": 14.5,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": 0.14663555477745832,
+      "backlash": 0.10371084974147379,
+      "internalCutterTeeth": 127,
+      "internalCutterProfileShift": -0.14720756160095336,
+      "internalCutterAddendumCoefficient": 1.39938687706599,
+      "internalCutterTipRadiusCoefficient": 0.20643319231458007,
+      "internalCutterThinning": 0.08407734547974542
+    }
+  },
+  {
+    "name": "matrix-77",
+    "params": {
+      "kind": "internal",
+      "teeth": 182,
+      "module": 1,
+      "pressureAngleDeg": 14.5,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": 0.04078717245720331,
+      "backlash": 0.07742606691084802,
+      "internalCutterTeeth": 51,
+      "internalCutterProfileShift": 0.1053921269252896,
+      "internalCutterAddendumCoefficient": 1.3976589493569918,
+      "internalCutterTipRadiusCoefficient": 0.31025906051509083,
+      "internalCutterThinning": 0.0033524273405782876
+    }
+  },
+  {
+    "name": "matrix-79",
+    "params": {
+      "kind": "internal",
+      "teeth": 158,
+      "module": 10,
+      "pressureAngleDeg": 14.5,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": 0.1720396968070418,
+      "backlash": 0.6517185556702315,
+      "internalCutterTeeth": 69,
+      "internalCutterProfileShift": 0.3320924931205808,
+      "internalCutterAddendumCoefficient": 1.111179557966534,
+      "internalCutterTipRadiusCoefficient": 0.1311554590705782,
+      "internalCutterThinning": 0.21132984606083483
+    }
+  },
+  {
+    "name": "matrix-82",
+    "params": {
+      "kind": "internal",
+      "teeth": 136,
+      "module": 3,
+      "pressureAngleDeg": 20,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": 0.5421176025643946,
+      "backlash": 0.12594786970876157,
+      "internalCutterTeeth": 75,
+      "internalCutterProfileShift": 0.46657781279645855,
+      "internalCutterAddendumCoefficient": 1.3495463031227701,
+      "internalCutterTipRadiusCoefficient": 0.17956790225580335,
+      "internalCutterThinning": 0.009996819875668733
+    }
+  },
+  {
+    "name": "matrix-86",
+    "params": {
+      "kind": "internal",
+      "teeth": 122,
+      "module": 0.2,
+      "pressureAngleDeg": 25,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": 0.04792688302695752,
+      "backlash": 0.00819817658700049,
+      "internalCutterTeeth": 46,
+      "internalCutterProfileShift": 0.13684899318031962,
+      "internalCutterAddendumCoefficient": 1.0678105262923054,
+      "internalCutterTipRadiusCoefficient": 0.1847718487493694,
+      "internalCutterThinning": 0.0046471987185068425
+    }
+  },
+  {
+    "name": "matrix-88",
+    "params": {
+      "kind": "internal",
+      "teeth": 92,
+      "module": 1,
+      "pressureAngleDeg": 20,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": 0.18723414139822125,
+      "backlash": 0.029556273305788635,
+      "internalCutterTeeth": 65,
+      "internalCutterProfileShift": 0.17422276833094652,
+      "internalCutterAddendumCoefficient": 1.3593518249108456,
+      "internalCutterTipRadiusCoefficient": 0.1677001563832164,
+      "internalCutterThinning": 0.02736241651000455
+    }
+  },
+  {
+    "name": "matrix-90",
+    "params": {
+      "kind": "internal",
+      "teeth": 192,
+      "module": 1,
+      "pressureAngleDeg": 20,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": 0.14644926320761442,
+      "backlash": 0.08964024399407208,
+      "internalCutterTeeth": 55,
+      "internalCutterProfileShift": 0.3568639391567558,
+      "internalCutterAddendumCoefficient": 1.056786239973735,
+      "internalCutterTipRadiusCoefficient": 0.14175663301721214,
+      "internalCutterThinning": 0.013039336691144853
+    }
+  },
+  {
+    "name": "matrix-92",
+    "params": {
+      "kind": "internal",
+      "teeth": 175,
+      "module": 10,
+      "pressureAngleDeg": 20,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": 0.014556571003049634,
+      "backlash": 1.0517467022873461,
+      "internalCutterTeeth": 73,
+      "internalCutterProfileShift": 0.1283620737958699,
+      "internalCutterAddendumCoefficient": 1.0730663257068955,
+      "internalCutterTipRadiusCoefficient": 0.32150376625359056,
+      "internalCutterThinning": 0.12734364971984177
+    }
+  },
+  {
+    "name": "matrix-95",
+    "params": {
+      "kind": "internal",
+      "teeth": 145,
+      "module": 3,
+      "pressureAngleDeg": 20,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": 0.3629863778594881,
+      "backlash": 0.04522709601558745,
+      "internalCutterTeeth": 81,
+      "internalCutterProfileShift": 0.4163496420718729,
+      "internalCutterAddendumCoefficient": 1.27660863265628,
+      "internalCutterTipRadiusCoefficient": 0.20019655846990647,
+      "internalCutterThinning": 0.04419225386576727
+    }
+  },
+  {
+    "name": "matrix-98",
+    "params": {
+      "kind": "internal",
+      "teeth": 109,
+      "module": 10,
+      "pressureAngleDeg": 20,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": -0.03228437136858697,
+      "backlash": 1.0256118376739323,
+      "internalCutterTeeth": 23,
+      "internalCutterProfileShift": 0.28264169893227514,
+      "internalCutterAddendumCoefficient": 1.2195814131642693,
+      "internalCutterTipRadiusCoefficient": 0.12946089627221227,
+      "internalCutterThinning": 0.16918789597693829
+    }
+  },
+  {
+    "name": "matrix-106",
+    "params": {
+      "kind": "internal",
+      "teeth": 135,
+      "module": 10,
+      "pressureAngleDeg": 20,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": 0.14809351768344642,
+      "backlash": 0.899977618921548,
+      "internalCutterTeeth": 62,
+      "internalCutterProfileShift": 0.4588265584316104,
+      "internalCutterAddendumCoefficient": 1.1212104787002317,
+      "internalCutterTipRadiusCoefficient": 0.10401339465752245,
+      "internalCutterThinning": 0.06656270439270884
+    }
+  },
+  {
+    "name": "matrix-110",
+    "params": {
+      "kind": "internal",
+      "teeth": 52,
+      "module": 3,
+      "pressureAngleDeg": 20,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": 0.28169152066111564,
+      "backlash": 0.19635584763251246,
+      "internalCutterTeeth": 32,
+      "internalCutterProfileShift": 0.46551523501984765,
+      "internalCutterAddendumCoefficient": 1.10590949653415,
+      "internalCutterTipRadiusCoefficient": 0.346293397154659,
+      "internalCutterThinning": 0.05631577520398423
+    }
+  },
+  {
+    "name": "matrix-113",
+    "params": {
+      "kind": "internal",
+      "teeth": 193,
+      "module": 10,
+      "pressureAngleDeg": 25,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": 0.24479439589194957,
+      "backlash": 0.4057109638117254,
+      "internalCutterTeeth": 20,
+      "internalCutterProfileShift": 0.22310349643230437,
+      "internalCutterAddendumCoefficient": 1.0563232812215575,
+      "internalCutterTipRadiusCoefficient": 0.22197066000662743,
+      "internalCutterThinning": 0.08366792339365929
+    }
+  },
+  {
+    "name": "matrix-114",
+    "params": {
+      "kind": "internal",
+      "teeth": 157,
+      "module": 1,
+      "pressureAngleDeg": 20,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": -0.06584571953862903,
+      "backlash": 0.008819485204294323,
+      "internalCutterTeeth": 67,
+      "internalCutterProfileShift": 0.2779707027133554,
+      "internalCutterAddendumCoefficient": 1.1745907644624822,
+      "internalCutterTipRadiusCoefficient": 0.16414917455986144,
+      "internalCutterThinning": 0.01756046451861039
+    }
+  },
+  {
+    "name": "matrix-115",
+    "params": {
+      "kind": "internal",
+      "teeth": 197,
+      "module": 0.2,
+      "pressureAngleDeg": 20,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": 0.22624246221967043,
+      "backlash": 0.0012503299321979286,
+      "internalCutterTeeth": 75,
+      "internalCutterProfileShift": -0.10969932610169054,
+      "internalCutterAddendumCoefficient": 1.2472340822801926,
+      "internalCutterTipRadiusCoefficient": 0.18008390967734159,
+      "internalCutterThinning": 0.0008115213769488037
+    }
+  },
+  {
+    "name": "matrix-118",
+    "params": {
+      "kind": "internal",
+      "teeth": 82,
+      "module": 10,
+      "pressureAngleDeg": 14.5,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": 0.29035900197923187,
+      "backlash": 0.9736408752389252,
+      "internalCutterTeeth": 48,
+      "internalCutterProfileShift": 0.18566420632414515,
+      "internalCutterAddendumCoefficient": 1.1891396393883042,
+      "internalCutterTipRadiusCoefficient": 0.26360852075740693,
+      "internalCutterThinning": 0.14383411465678364
+    }
+  },
+  {
+    "name": "matrix-119",
+    "params": {
+      "kind": "internal",
+      "teeth": 173,
+      "module": 0.2,
+      "pressureAngleDeg": 14.5,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": 0.44693126888014384,
+      "backlash": 0.02087450391612947,
+      "internalCutterTeeth": 116,
+      "internalCutterProfileShift": 0.3628182803280651,
+      "internalCutterAddendumCoefficient": 1.3316553268232383,
+      "internalCutterTipRadiusCoefficient": 0.2847179210279137,
+      "internalCutterThinning": 0.0013663875977508724
+    }
+  },
+  {
+    "name": "matrix-122",
+    "params": {
+      "kind": "internal",
+      "teeth": 122,
+      "module": 3,
+      "pressureAngleDeg": 14.5,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": -0.016886201687157154,
+      "backlash": 0.1230391441192478,
+      "internalCutterTeeth": 61,
+      "internalCutterProfileShift": 0.4540130355861038,
+      "internalCutterAddendumCoefficient": 1.1066532702068799,
+      "internalCutterTipRadiusCoefficient": 0.11475562611594797,
+      "internalCutterThinning": 0.05381431204034016
+    }
+  },
+  {
+    "name": "matrix-123",
+    "params": {
+      "kind": "internal",
+      "teeth": 199,
+      "module": 3,
+      "pressureAngleDeg": 20,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": 0.4341634460259229,
+      "backlash": 0.048982989946380256,
+      "internalCutterTeeth": 55,
+      "internalCutterProfileShift": 0.45396521715447297,
+      "internalCutterAddendumCoefficient": 1.2091658151359297,
+      "internalCutterTipRadiusCoefficient": 0.3237682205159217,
+      "internalCutterThinning": 0.05042239693226293
+    }
+  },
+  {
+    "name": "matrix-127",
+    "params": {
+      "kind": "internal",
+      "teeth": 92,
+      "module": 0.2,
+      "pressureAngleDeg": 20,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": 0.3616482908371836,
+      "backlash": 0.008900451695546508,
+      "internalCutterTeeth": 72,
+      "internalCutterProfileShift": 0.4423713595606386,
+      "internalCutterAddendumCoefficient": 1.2262601265334525,
+      "internalCutterTipRadiusCoefficient": 0.28835018747486174,
+      "internalCutterThinning": 0.0033325397218577565
+    }
+  },
+  {
+    "name": "matrix-128",
+    "params": {
+      "kind": "internal",
+      "teeth": 66,
+      "module": 3,
+      "pressureAngleDeg": 25,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": 0.5774582603015006,
+      "backlash": 0.329275812311098,
+      "internalCutterTeeth": 28,
+      "internalCutterProfileShift": 0.08480589003302152,
+      "internalCutterAddendumCoefficient": 1.094677398109343,
+      "internalCutterTipRadiusCoefficient": 0.2103243524208665,
+      "internalCutterThinning": 0.06406012039398774
+    }
+  },
+  {
+    "name": "matrix-145",
+    "params": {
+      "kind": "internal",
+      "teeth": 142,
+      "module": 0.2,
+      "pressureAngleDeg": 25,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": 0.09999653580598533,
+      "backlash": 0.01723263022117317,
+      "internalCutterTeeth": 30,
+      "internalCutterProfileShift": 0.42663211375474924,
+      "internalCutterAddendumCoefficient": 1.1421976025332696,
+      "internalCutterTipRadiusCoefficient": 0.18312612674199047,
+      "internalCutterThinning": 0.00373871207004413
+    }
+  },
+  {
+    "name": "matrix-150",
+    "params": {
+      "kind": "internal",
+      "teeth": 129,
+      "module": 10,
+      "pressureAngleDeg": 20,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": 0.04240606538951397,
+      "backlash": 0.8912715417332948,
+      "internalCutterTeeth": 92,
+      "internalCutterProfileShift": 0.29366635489277537,
+      "internalCutterAddendumCoefficient": 1.3773127389955335,
+      "internalCutterTipRadiusCoefficient": 0.24528599781915544,
+      "internalCutterThinning": 0.14634032158646731
+    }
+  },
+  {
+    "name": "matrix-158",
+    "params": {
+      "kind": "internal",
+      "teeth": 94,
+      "module": 1,
+      "pressureAngleDeg": 20,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": 0.1469157412648201,
+      "backlash": 0.05822533336468041,
+      "internalCutterTeeth": 74,
+      "internalCutterProfileShift": -0.017142491834238188,
+      "internalCutterAddendumCoefficient": 1.329513597849291,
+      "internalCutterTipRadiusCoefficient": 0.10350046968087555,
+      "internalCutterThinning": 0.009011595121119171
+    }
+  },
+  {
+    "name": "matrix-163",
+    "params": {
+      "kind": "internal",
+      "teeth": 119,
+      "module": 3,
+      "pressureAngleDeg": 14.5,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": 0.2364870187360794,
+      "backlash": 0.026929139206185934,
+      "internalCutterTeeth": 66,
+      "internalCutterProfileShift": 0.4813754244707524,
+      "internalCutterAddendumCoefficient": 1.39683238012949,
+      "internalCutterTipRadiusCoefficient": 0.3144218542147428,
+      "internalCutterThinning": 0.0023121559736318884
+    }
+  },
+  {
+    "name": "matrix-165",
+    "params": {
+      "kind": "internal",
+      "teeth": 152,
+      "module": 10,
+      "pressureAngleDeg": 14.5,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": 0.42778270966373383,
+      "backlash": 0.16968560284003617,
+      "internalCutterTeeth": 74,
+      "internalCutterProfileShift": 0.3899535125121473,
+      "internalCutterAddendumCoefficient": 1.2178309315931983,
+      "internalCutterTipRadiusCoefficient": 0.15488625052385033,
+      "internalCutterThinning": 0.006973603810183703
+    }
+  },
+  {
+    "name": "matrix-168",
+    "params": {
+      "kind": "internal",
+      "teeth": 130,
+      "module": 3,
+      "pressureAngleDeg": 14.5,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": 0.4333393511362374,
+      "backlash": 0.3583644884359091,
+      "internalCutterTeeth": 74,
+      "internalCutterProfileShift": -0.09286451018415393,
+      "internalCutterAddendumCoefficient": 1.383216651098337,
+      "internalCutterTipRadiusCoefficient": 0.1675370713695884,
+      "internalCutterThinning": 0.00436255678301677
+    }
+  },
+  {
+    "name": "matrix-177",
+    "params": {
+      "kind": "internal",
+      "teeth": 82,
+      "module": 10,
+      "pressureAngleDeg": 20,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": 0.4034580293577165,
+      "backlash": 0.38503710469231006,
+      "internalCutterTeeth": 40,
+      "internalCutterProfileShift": 0.3658155620098113,
+      "internalCutterAddendumCoefficient": 1.0568009811569936,
+      "internalCutterTipRadiusCoefficient": 0.17352925888262688,
+      "internalCutterThinning": 0.06046199637930841
+    }
+  },
+  {
+    "name": "matrix-187",
+    "params": {
+      "kind": "internal",
+      "teeth": 184,
+      "module": 10,
+      "pressureAngleDeg": 14.5,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": -0.2640374205540866,
+      "backlash": 0.03335117949172854,
+      "internalCutterTeeth": 44,
+      "internalCutterProfileShift": 0.35727293817326417,
+      "internalCutterAddendumCoefficient": 1.2513302168459632,
+      "internalCutterTipRadiusCoefficient": 0.2815594148356467,
+      "internalCutterThinning": 0.15579969675745814
+    }
+  },
+  {
+    "name": "matrix-192",
+    "params": {
+      "kind": "internal",
+      "teeth": 189,
+      "module": 10,
+      "pressureAngleDeg": 14.5,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": -0.003543161507695902,
+      "backlash": 1.1087367706932127,
+      "internalCutterTeeth": 37,
+      "internalCutterProfileShift": 0.2413031509611755,
+      "internalCutterAddendumCoefficient": 1.3463006158708595,
+      "internalCutterTipRadiusCoefficient": 0.24164819959551095,
+      "internalCutterThinning": 0.14025210973341018
+    }
+  },
+  {
+    "name": "matrix-194",
+    "params": {
+      "kind": "internal",
+      "teeth": 200,
+      "module": 3,
+      "pressureAngleDeg": 20,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": -0.09239317160099744,
+      "backlash": 0.1074008101131767,
+      "internalCutterTeeth": 106,
+      "internalCutterProfileShift": -0.008592572296038298,
+      "internalCutterAddendumCoefficient": 1.2569232589448802,
+      "internalCutterTipRadiusCoefficient": 0.37447344334796073,
+      "internalCutterThinning": 0.023732746846508238
+    }
+  },
+  {
+    "name": "matrix-196",
+    "params": {
+      "kind": "internal",
+      "teeth": 45,
+      "module": 1,
+      "pressureAngleDeg": 20,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": 0.4740575621835888,
+      "backlash": 0.02348730848170817,
+      "internalCutterTeeth": 19,
+      "internalCutterProfileShift": 0.26945892018266016,
+      "internalCutterAddendumCoefficient": 1.1371823117486202,
+      "internalCutterTipRadiusCoefficient": 0.2886461392045021,
+      "internalCutterThinning": 0.01856797657208517
+    }
+  },
+  {
+    "name": "matrix-197",
+    "params": {
+      "kind": "internal",
+      "teeth": 191,
+      "module": 1,
+      "pressureAngleDeg": 25,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": 0.056316730147227656,
+      "backlash": 0.01569459862075746,
+      "internalCutterTeeth": 35,
+      "internalCutterProfileShift": 0.2672346761450171,
+      "internalCutterAddendumCoefficient": 1.1322789328289218,
+      "internalCutterTipRadiusCoefficient": 0.16282072993926705,
+      "internalCutterThinning": 0.024632255032192914
+    }
+  },
+  {
+    "name": "matrix-199",
+    "params": {
+      "kind": "internal",
+      "teeth": 197,
+      "module": 0.2,
+      "pressureAngleDeg": 14.5,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": 0.16283987746573986,
+      "backlash": 0.017586662298068403,
+      "internalCutterTeeth": 61,
+      "internalCutterProfileShift": 0.4045469400472938,
+      "internalCutterAddendumCoefficient": 1.0803149014362134,
+      "internalCutterTipRadiusCoefficient": 0.22337448881007732,
+      "internalCutterThinning": 0.0018361397157423199
+    }
+  },
+  {
+    "name": "matrix-203",
+    "params": {
+      "kind": "internal",
+      "teeth": 104,
+      "module": 10,
+      "pressureAngleDeg": 25,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": -0.033504123939201214,
+      "backlash": 1.147415035497397,
+      "internalCutterTeeth": 44,
+      "internalCutterProfileShift": 0.08889167560264466,
+      "internalCutterAddendumCoefficient": 1.2907900365651586,
+      "internalCutterTipRadiusCoefficient": 0.11563206654973329,
+      "internalCutterThinning": 0.13639408664312214
+    }
+  },
+  {
+    "name": "matrix-206",
+    "params": {
+      "kind": "internal",
+      "teeth": 171,
+      "module": 0.2,
+      "pressureAngleDeg": 25,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": 0.4554837919771672,
+      "backlash": 0.01256805252470076,
+      "internalCutterTeeth": 44,
+      "internalCutterProfileShift": -0.10391599093563857,
+      "internalCutterAddendumCoefficient": 1.3002177186193875,
+      "internalCutterTipRadiusCoefficient": 0.12632176568731665,
+      "internalCutterThinning": 0.0021570214522071184
+    }
+  },
+  {
+    "name": "matrix-208",
+    "params": {
+      "kind": "internal",
+      "teeth": 101,
+      "module": 3,
+      "pressureAngleDeg": 20,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": 0.5647483245469631,
+      "backlash": 0.08695108364336192,
+      "internalCutterTeeth": 21,
+      "internalCutterProfileShift": -0.010444010933861159,
+      "internalCutterAddendumCoefficient": 1.0739739478914998,
+      "internalCutterTipRadiusCoefficient": 0.1584896193817258,
+      "internalCutterThinning": 0.0013565276912413538
+    }
+  },
+  {
+    "name": "matrix-210",
+    "params": {
+      "kind": "internal",
+      "teeth": 168,
+      "module": 0.2,
+      "pressureAngleDeg": 20,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": -0.13934582378715274,
+      "backlash": 0.016136583069339395,
+      "internalCutterTeeth": 28,
+      "internalCutterProfileShift": 0.02164110220037399,
+      "internalCutterAddendumCoefficient": 1.0604438292677514,
+      "internalCutterTipRadiusCoefficient": 0.35503059523180125,
+      "internalCutterThinning": 0.0014469721172936261
+    }
+  },
+  {
+    "name": "matrix-213",
+    "params": {
+      "kind": "internal",
+      "teeth": 131,
+      "module": 0.2,
+      "pressureAngleDeg": 20,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": -0.029283174360170916,
+      "backlash": 0.011644248319789767,
+      "internalCutterTeeth": 92,
+      "internalCutterProfileShift": 0.15292044114321468,
+      "internalCutterAddendumCoefficient": 1.1312707452219912,
+      "internalCutterTipRadiusCoefficient": 0.2455552216153592,
+      "internalCutterThinning": 0.0015215939520858228
+    }
+  },
+  {
+    "name": "matrix-215",
+    "params": {
+      "kind": "internal",
+      "teeth": 86,
+      "module": 0.2,
+      "pressureAngleDeg": 20,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": -0.2950406604912132,
+      "backlash": 0.009521521037444473,
+      "internalCutterTeeth": 39,
+      "internalCutterProfileShift": 0.017889105249196263,
+      "internalCutterAddendumCoefficient": 1.1140812497236767,
+      "internalCutterTipRadiusCoefficient": 0.3784172228071838,
+      "internalCutterThinning": 0.005972270391415804
+    }
+  },
+  {
+    "name": "matrix-216",
+    "params": {
+      "kind": "internal",
+      "teeth": 112,
+      "module": 0.2,
+      "pressureAngleDeg": 25,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": 0.38337148027494555,
+      "backlash": 0.019351088779047135,
+      "internalCutterTeeth": 47,
+      "internalCutterProfileShift": -0.17912906906567516,
+      "internalCutterAddendumCoefficient": 1.0757805190398357,
+      "internalCutterTipRadiusCoefficient": 0.35806734841316934,
+      "internalCutterThinning": 0.002478756452444941
+    }
+  },
+  {
+    "name": "matrix-217",
+    "params": {
+      "kind": "internal",
+      "teeth": 187,
+      "module": 1,
+      "pressureAngleDeg": 14.5,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": 0.22714115898124881,
+      "backlash": 0.02001525848172605,
+      "internalCutterTeeth": 115,
+      "internalCutterProfileShift": 0.3043059688061475,
+      "internalCutterAddendumCoefficient": 1.3289873168920168,
+      "internalCutterTipRadiusCoefficient": 0.13966297819279133,
+      "internalCutterThinning": 0.028959674786310643
+    }
+  },
+  {
+    "name": "matrix-221",
+    "params": {
+      "kind": "internal",
+      "teeth": 194,
+      "module": 10,
+      "pressureAngleDeg": 14.5,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": 0.30153946965001527,
+      "backlash": 0.9309071562252937,
+      "internalCutterTeeth": 128,
+      "internalCutterProfileShift": 0.10187352690845725,
+      "internalCutterAddendumCoefficient": 1.098812440421898,
+      "internalCutterTipRadiusCoefficient": 0.32287175725214184,
+      "internalCutterThinning": 0.18256051323842257
+    }
+  },
+  {
+    "name": "matrix-234",
+    "params": {
+      "kind": "internal",
+      "teeth": 173,
+      "module": 3,
+      "pressureAngleDeg": 14.5,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": 0.19779426064342265,
+      "backlash": 0.3216634674277157,
+      "internalCutterTeeth": 62,
+      "internalCutterProfileShift": 0.04909225567243991,
+      "internalCutterAddendumCoefficient": 1.3760603745351545,
+      "internalCutterTipRadiusCoefficient": 0.25218307310715316,
+      "internalCutterThinning": 0.030175222798716275
+    }
+  },
+  {
+    "name": "matrix-241",
+    "params": {
+      "kind": "internal",
+      "teeth": 129,
+      "module": 1,
+      "pressureAngleDeg": 20,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": -0.08820029762573539,
+      "backlash": 0.10827409311197697,
+      "internalCutterTeeth": 61,
+      "internalCutterProfileShift": 0.28513132631778715,
+      "internalCutterAddendumCoefficient": 1.2430933478404769,
+      "internalCutterTipRadiusCoefficient": 0.3463753943797201,
+      "internalCutterThinning": 0.017415029543917625
+    }
+  },
+  {
+    "name": "matrix-242",
+    "params": {
+      "kind": "internal",
+      "teeth": 141,
+      "module": 0.2,
+      "pressureAngleDeg": 20,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": 0.31942211631685496,
+      "backlash": 0.0056166263613849875,
+      "internalCutterTeeth": 96,
+      "internalCutterProfileShift": 0.16924462444148952,
+      "internalCutterAddendumCoefficient": 1.1868730257148854,
+      "internalCutterTipRadiusCoefficient": 0.1049301658757031,
+      "internalCutterThinning": 0.005103492930997163
+    }
+  },
+  {
+    "name": "matrix-248",
+    "params": {
+      "kind": "internal",
+      "teeth": 150,
+      "module": 3,
+      "pressureAngleDeg": 20,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": -0.1546743775717914,
+      "backlash": 0.3376533957850188,
+      "internalCutterTeeth": 36,
+      "internalCutterProfileShift": 0.2736735279206186,
+      "internalCutterAddendumCoefficient": 1.0971548243775033,
+      "internalCutterTipRadiusCoefficient": 0.24286064635962248,
+      "internalCutterThinning": 0.056460642737802116
+    }
+  },
+  {
+    "name": "matrix-250",
+    "params": {
+      "kind": "internal",
+      "teeth": 113,
+      "module": 10,
+      "pressureAngleDeg": 25,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": 0.5670590786263348,
+      "backlash": 1.1004155670292675,
+      "internalCutterTeeth": 50,
+      "internalCutterProfileShift": -0.022088607260957377,
+      "internalCutterAddendumCoefficient": 1.2131232679705135,
+      "internalCutterTipRadiusCoefficient": 0.26306492248550056,
+      "internalCutterThinning": 0.11092056969646365
+    }
+  },
+  {
+    "name": "matrix-257",
+    "params": {
+      "kind": "internal",
+      "teeth": 71,
+      "module": 0.2,
+      "pressureAngleDeg": 25,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": -0.018788476707413793,
+      "backlash": 0.003287193803116679,
+      "internalCutterTeeth": 38,
+      "internalCutterProfileShift": -0.027019379287958167,
+      "internalCutterAddendumCoefficient": 1.2664691462297923,
+      "internalCutterTipRadiusCoefficient": 0.1327873734291643,
+      "internalCutterThinning": 0.001471551430877298
+    }
+  },
+  {
+    "name": "matrix-261",
+    "params": {
+      "kind": "internal",
+      "teeth": 135,
+      "module": 3,
+      "pressureAngleDeg": 25,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": 0.29506468749605125,
+      "backlash": 0.30456621606834233,
+      "internalCutterTeeth": 44,
+      "internalCutterProfileShift": -0.11097239051014186,
+      "internalCutterAddendumCoefficient": 1.173466843564529,
+      "internalCutterTipRadiusCoefficient": 0.12606403264217078,
+      "internalCutterThinning": 0.031426230354700234
+    }
+  },
+  {
+    "name": "matrix-264",
+    "params": {
+      "kind": "internal",
+      "teeth": 176,
+      "module": 1,
+      "pressureAngleDeg": 14.5,
+      "width": 10,
+      "bore": 0,
+      "helixAngleDeg": 0,
+      "profileShift": 0.3631808501668275,
+      "backlash": 0.0956113485340029,
+      "internalCutterTeeth": 45,
+      "internalCutterProfileShift": -0.03522747880779209,
+      "internalCutterAddendumCoefficient": 1.2730425204499625,
+      "internalCutterTipRadiusCoefficient": 0.3005506550893188,
+      "internalCutterThinning": 0.02499829401494935
+    }
+  }
+]

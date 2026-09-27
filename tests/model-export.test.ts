@@ -28,7 +28,7 @@ for (const kind of Object.keys(modelNames) as ModelKind[]) {
       assert.equal(passport.artifact.preset, preset);
       assert.equal(passport.artifact.requestedQuality.flankSamples, preset === 'standard' ? 12 : 32);
       assert.deepEqual(passport.artifact.actualTessellation, mesh.tessellation);
-      assert.equal(passport.schema, 'zatseplenie.gear.v5');
+      assert.equal(passport.schema, 'zatseplenie.gear.v6');
       assert.equal(passport.units, 'mm');
       assert.equal(passport.origin, provenance.origin);
       assert.deepEqual(passport.evidence, provenance.evidence);
@@ -61,6 +61,21 @@ test('a current-model passport is explicitly distinct from the Pro export passpo
   assert.equal(current.artifact.requestedQuality, null);
   assert.equal(current.artifact.triangles, preview.indices.length / 3);
   assert.notEqual(current.artifact.triangles, exported.artifact.triangles);
+});
+
+test('internal STL passport preserves the assumed cutter, true root/join, tolerance and photo provenance separately', () => {
+  const prepared = prepareModelExport({ ...defaultModel('internal'), internalCutterThinning: .03 }, 'pro', provenance);
+  const report = JSON.parse(JSON.stringify(prepared.passport)), g = report.internalCutterGeometry;
+  assert.equal(g.tool.teeth, 24); assert.equal(g.tool.thinning, .03);
+  assert.equal(g.tool.provenance, 'specified-or-assumed; not-inferred-from-photo');
+  assert.equal(report.rootDiagnostics, null); assert.equal(report.internalRootDiagnostics.method, 'circular-pinion-cutter-envelope');
+  assert.equal(report.dimensions.rootDiameter, g.rootRadius * 2);
+  assert.equal(report.internalRootDiagnostics.joinRadius, g.joinRadius);
+  assert.ok(report.internalRootDiagnostics.maxChordErrorBound <= report.internalRootDiagnostics.profileTolerance);
+  assert.ok(g.lowerToolClosure.coreRadius <= g.lowerToolClosure.maximumNonInterferingCoreRadius);
+  assert.equal(report.dimensions.minimumProfileShift, null); assert.equal(report.dimensions.virtualTeeth, null);
+  assert.deepEqual(report.evidence, provenance.evidence);
+  assert.equal(report.parameters.internalCutterThinning, .03);
 });
 
 test('export presets cannot bypass kernel limits or accept an unknown quality key', () => {

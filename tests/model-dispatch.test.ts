@@ -20,6 +20,24 @@ test('all ten model defaults dispatch without leaking another family’s paramet
   }
 });
 
+test('internal reports do not publish an external-rack undercut criterion as an internal shift limit', () => {
+  for (const kind of ['internal', 'internal-helical'] as const) {
+    const mesh = buildModelMesh(defaultModel(kind)), report = modelDimensionsForReport(mesh);
+    assert.equal(report.minimumProfileShift, null); assert.equal(report.virtualTeeth, null);
+    assert.equal(report.normalPressureAngleDeg, 20); assert.ok(report.baseDiameter! > 0);
+  }
+});
+
+test('internal FDM uses actual generated outside size and material behind the actual root', () => {
+  const mesh = buildModelMesh(defaultModel('internal'));
+  const report = assessPrint(mesh, validateMesh(mesh), { ...defaultPrintSettings, bedX: 187.1, bedY: 187.1 });
+  // Nominal df=165 would fit; generated df=165.218... makes the enlarged blank fail.
+  assert.ok(report.size[0] > 177.2); assert.equal(report.checks.find(c => c.id === 'bed')?.status, 'fail');
+  assert.match(report.checks.find(c => c.id === 'geometry')!.detail, /долбяка/);
+  const thin = buildModelMesh({ ...defaultModel('internal'), rimThickness: .6 });
+  assert.equal(assessPrint(thin, validateMesh(thin), defaultPrintSettings).checks.find(c => c.id === 'wall')?.status, 'warning');
+});
+
 test('bevel adapter preserves its cone inputs and exposes true spatial ends in reports', () => {
   const params = defaultModel('bevel'); assert.equal(params.teeth, 40); assert.equal(params.bevelMateTeeth, 40);
   const mesh = buildModelMesh({ ...params, bevelMateTeeth: 80, bevelShaftAngleDeg: 90 });

@@ -8,6 +8,8 @@ import { inferGearFromMeasurements, type InferredGearKind, type MeasurementSourc
 import { buildModelMesh, defaultModel, isRackKind, isInternalKind, isHelicalKind, modelNames, type ModelParams } from '@/lib/model';
 import { PhotoScale, type PhotoScaleMeasurement } from './PhotoScale';
 import { useActivePopup } from './useActivePopup';
+import { defaultInternalCutter } from '@/lib/generatedInternalRoot';
+import { InternalCutterFields, type InternalCutterInputs } from './InternalCutterFields';
 
 type ApplyParams = Partial<ModelParams> & { kind: InferredGearKind };
 const inferredKinds: InferredGearKind[] = ['spur', 'helical', 'herringbone', 'internal', 'internal-helical', 'rack', 'helical-rack'];
@@ -27,6 +29,7 @@ export function PhotoWizard({ onApply, onManual, onDraftChange, active = true }:
   const [beta, setBeta] = useState(''), [alpha, setAlpha] = useState(''), [shift, setShift] = useState('');
   const [standard, setStandard] = useState(false), [symmetric, setSymmetric] = useState(false);
   const [width, setWidth] = useState(''), [body, setBody] = useState('');
+  const [internalCutter, setInternalCutter] = useState<InternalCutterInputs>({ ...defaultInternalCutter });
   const [source, setSource] = useState<MeasurementSource>('user_confirmation');
   const supported = inferredKinds.includes(kind as InferredGearKind);
   const rack = supported && isRackKind(kind as InferredGearKind), internal = supported && isInternalKind(kind as InferredGearKind);
@@ -35,6 +38,7 @@ export function PhotoWizard({ onApply, onManual, onDraftChange, active = true }:
     setKind('unknown'); setProfile('unknown'); setTeeth(''); setConfirmedTeeth(false); setDamageHypothesisTransferred(false); setDiameter(''); setPitch('');
     setDiameterMethod('unknown'); setBeta(''); setAlpha(''); setShift(''); setStandard(false); setSymmetric(false);
     setWidth(''); setBody(''); setSource('user_confirmation'); setPhotoMeasurement(null);
+    setInternalCutter({ ...defaultInternalCutter });
   };
   const loadFile = async (file?: File) => {
     if (!file) return;
@@ -100,6 +104,7 @@ export function PhotoWizard({ onApply, onManual, onDraftChange, active = true }:
   const apply = () => {
     if (!ready || result.status !== 'ready') return;
     const patch: ApplyParams = { ...result.parameters, teeth: Number(teeth), width: Number(width), backlash: 0,
+      ...(kind === 'internal' ? internalCutter : {}),
       ...(rack ? { rackBaseHeight: Number(body) } : internal ? { rimThickness: Number(body) } : { bore: Number(body) }) };
     try {
       buildModelMesh({ ...defaultModel(patch.kind), ...patch });
@@ -117,9 +122,13 @@ export function PhotoWizard({ onApply, onManual, onDraftChange, active = true }:
           warning: 'Сектора — ожидаемые зубцовые ячейки для осмотра, а не измеренные границы разрушения. Гипотеза не устанавливает профиль, модуль или пригодность детали.',
         } } : {}),
         bodyDimensions: { widthMm: Number(width), ...(rack ? { rackBaseHeightMm: Number(body) } : internal ? { rimThicknessMm: Number(body) } : { boreMm: Number(body) }), source },
-        reconstructionAssumptions: ['Утонение зуба принято 0; посадочные допуски не восстановлены.', 'Переходы у основания и технологические детали не измерены по фотографии.', ...(kind === 'herringbone' ? ['Равные половины шеврона, без центральной канавки.'] : [])],
+        ...(kind === 'internal' ? { internalCutterAssumption: { parameters: { ...internalCutter }, source: 'specified-or-assumed; not-inferred-from-photo' } } : {}),
+        reconstructionAssumptions: ['Утонение зуба принято 0; посадочные допуски не восстановлены.', 'Переходы у основания и технологические детали не измерены по фотографии.', ...(kind === 'internal' ? ['Переходная кривая рассчитана по принятому долбяку; параметры инструмента показаны на шаге размеров и не определены по фото.'] : []), ...(kind === 'herringbone' ? ['Равные половины шеврона, без центральной канавки.'] : [])],
       });
-    } catch (e) { setError(e instanceof Error ? e.message : 'Эти параметры выходят за область модели.'); }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Эти параметры выходят за область модели.');
+      requestAnimationFrame(() => { stepHeading.current?.focus({ preventScroll: true }); stepHeading.current?.scrollIntoView({ block: 'start' }); });
+    }
   };
   const typeReady = supported && confirmedTeeth && Number.isInteger(Number(teeth)) && Number(teeth) >= (rack ? 1 : 6) && Number(teeth) <= 250;
   const scaleReady = result.status === 'ready' && (kind !== 'herringbone' || symmetric);
@@ -186,6 +195,8 @@ export function PhotoWizard({ onApply, onManual, onDraftChange, active = true }:
       <dl className="photo-summary"><div><dt>Тип</dt><dd>{supported ? modelNames[kind as InferredGearKind] : 'Не подтверждён'}</dd></div><div><dt>Число зубьев</dt><dd>{teeth || '—'}</dd></div><div><dt>Модуль</dt><dd>{result.calculation ? `${result.calculation.normalModuleMm.toLocaleString('ru-RU', { maximumFractionDigits: 5 })} мм` : '—'}</dd></div></dl>
       <div className="input-grid photo-spaced"><Measure label="Ширина, мм" value={width} set={v => edit(setWidth, v)} placeholder="Измерьте" /><Measure label={rack ? 'Основание, мм' : internal ? 'Обод, мм' : 'Отверстие, мм'} value={body} set={v => edit(setBody, v)} placeholder={rack || internal ? 'Измерьте' : '0 — сплошное'} /></div>
       <p className="field-help">Размеры тела обязательны. Галтель, посадки и утонение зуба по фото не восстановлены: в модели утонение 0; у наружного колеса радиус вершины инструмента 0,3mₙ. Их можно изменить вручную.</p>
+      {kind === 'internal' && <InternalCutterFields params={internalCutter} onChange={(key, value) => { onDraftChange(); setError(''); setInternalCutter(old => ({ ...old, [key]: value })); }} />}
+      {kind === 'internal-helical' && <p className="field-help">Внутреннее косозубое строится без производящей переходной поверхности. Плоский долбяк к этому режиму не применяется.</p>}
       {!ready && <p className="field-help">Укажите оба размера. Для сплошной детали отверстие равно 0.</p>}
     </section>
     <div className="wizard-actions">
