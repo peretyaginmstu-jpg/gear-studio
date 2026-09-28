@@ -96,7 +96,7 @@ export default function Home() {
               <div className="manual-build-status" aria-live="polite">{state.manualFamilyPending ? <p>Ответы о типе ещё не применены. Завершите помощник или вернитесь в нём к прямому выбору типа.</p> : state.manualSpanPending ? <p>Измерения ещё не применены. Завершите помощник или выберите в нём прямой ввод параметров.</p> : updating ? <p>Проверяем параметры…</p> : manualCheck.error ? <p className="inline-error" role="alert">{manualCheck.error}</p> : <p><Check size={17} /> Параметры можно использовать для построения.</p>}</div>
               <button className="primary-button full build-model-button" disabled={state.manualFamilyPending || state.manualSpanPending || updating || !!manualCheck.error} onClick={buildManual}>Построить модель <ArrowRight size={20} /></button>
             </div>
-            <div hidden={state.mode !== 'photo'}><PhotoWizard active={photoActive} onDraftChange={() => send({ type: 'edit-photo' })} onApply={(params, origin, evidence) => send({ type: 'build', params: { ...defaultModel(params.kind), ...params }, origin, evidence })} onManual={() => chooseInput('manual')}
+            <div hidden={state.mode !== 'photo'}><PhotoWizard active={photoActive} onDraftChange={() => send({ type: 'edit-photo' })} onApply={(params, origin, evidence) => send({ type: 'build', params: { ...defaultModel(params.kind), ...params }, origin, evidence })} onManual={kind => { chooseInput('manual'); if (kind) selectKind(kind); }}
               onManualFamily={application => { chooseInput('manual'); send({ type: 'apply-manual-family', application }); }} /></div>
             {state.error && <p className="inline-error" role="alert">{state.error}</p>}
           </div>

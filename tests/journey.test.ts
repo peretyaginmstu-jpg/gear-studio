@@ -66,6 +66,16 @@ test('changing input method preserves manual values and cannot retain photo conf
   s = build(s); s = transitionJourney(s, { type: 'confirm' });
   s = transitionJourney(s, { type: 'choose-input', mode: 'photo' }); assert.equal(s.built, null); assert.equal(s.confirmedRevision, null);
 });
+test('explicit cycloidal photo-profile route opens the matching manual model without building it', () => {
+  let s = transitionJourney(initialJourney(), { type: 'choose-input', mode: 'photo' });
+  s = transitionJourney(s, { type: 'edit-photo' });
+  s = transitionJourney(s, { type: 'choose-input', mode: 'manual' });
+  s = transitionJourney(s, { type: 'select-manual-kind', kind: 'cycloidal' });
+  assert.equal(s.mode, 'manual'); assert.equal(s.stage, 'input');
+  assert.equal(s.manualDraft.kind, 'cycloidal'); assert.equal(s.built, null);
+  const built = transitionJourney(s, { type: 'build', params: s.manualDraft, origin: 'Параметры заданы вручную', evidence: null });
+  assert.equal(built.stage, 'review'); assert.equal(built.built?.params.kind, 'cycloidal');
+});
 test('checkout exports its captured model and quality; later changes cannot silently alter the artifact', () => {
   let s: JourneyState = transitionJourney(confirmed(), { type: 'choose-delivery', choice: { kind: 'file', preset: 'pro' } });
   s = transitionJourney(s, { type: 'navigate', stage: 'checkout' });
@@ -127,7 +137,7 @@ test('fit checkout STL, passport and print brief share the selected representati
   const brief = createPrintBrief(model.mesh, model.validation, defaultPrintSettings, model, '2026-09-28T00:00:00.000Z');
   assert.deepEqual(brief.parameters, prepared.passport.parameters);
   assert.deepEqual(brief.evidence, prepared.passport.evidence); assert.equal(brief.origin, prepared.passport.origin);
-  assert.equal(brief.orderStatus, 'Файл задания. Заказ не отправлен.'); assert.equal(brief.appVersion, '0.15.0');
+  assert.equal(brief.orderStatus, 'Файл задания. Заказ не отправлен.'); assert.equal(brief.appVersion, '0.16.0');
   s = transitionJourney(s, { type: 'edit-manual-span' }); assert.equal(checkoutSnapshot(s), null);
   assert.equal(prepared.passport.parameters.module, application.candidate.parameters.module);
 });

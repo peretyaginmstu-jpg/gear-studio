@@ -5,7 +5,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { ImageDataLike, PhotoAnalysis } from '@/lib/photo-analysis';
 import { inferGearFromMeasurements, type InferredGearKind, type MeasurementSource, type TipDiameterMethod, type PhotoInferenceInput } from '@/lib/photo-inference';
-import { buildModelMesh, defaultModel, isRackKind, isInternalKind, isHelicalKind, modelNames, type ModelParams } from '@/lib/model';
+import { buildModelMesh, defaultModel, isRackKind, isInternalKind, isHelicalKind, modelNames, type ModelKind, type ModelParams } from '@/lib/model';
 import { PhotoScale, type PhotoScaleMeasurement } from './PhotoScale';
 import { useActivePopup } from './useActivePopup';
 import { defaultInternalCutter } from '@/lib/generatedInternalRoot';
@@ -22,7 +22,7 @@ import { transitionPhotoToothCountDraft, type PhotoToothCountResetReason } from 
 
 type ApplyParams = Partial<ModelParams> & { kind: InferredGearKind };
 const inferredKinds: InferredGearKind[] = ['spur', 'helical', 'herringbone', 'internal', 'internal-helical', 'rack', 'helical-rack'];
-export function PhotoWizard({ onApply, onManual, onManualFamily, onDraftChange, active = true }: { onApply: (p: ApplyParams, source: string, evidence: unknown) => void; onManual: () => void;
+export function PhotoWizard({ onApply, onManual, onManualFamily, onDraftChange, active = true }: { onApply: (p: ApplyParams, source: string, evidence: unknown) => void; onManual: (kind?: ModelKind) => void;
   onManualFamily: (application: FamilyApplication) => void; onDraftChange: () => void; active?: boolean }) {
   const [step, setStep] = useState(0), stepHeading = useRef<HTMLHeadingElement>(null);
   const goStep = (next: number) => { setStep(next); requestAnimationFrame(() => { stepHeading.current?.focus({ preventScroll: true }); stepHeading.current?.scrollIntoView({ block: 'start' }); }); };
@@ -134,7 +134,7 @@ export function PhotoWizard({ onApply, onManual, onManualFamily, onDraftChange, 
     return {
       silhouette: analysis?.candidateTypes[0]?.type,
       ...(supported ? { kind: fact(kind as InferredGearKind) } : {}),
-      ...(profile !== 'unknown' ? { profileType: fact(profile as 'involute' | 'other') } : {}),
+      ...(profile !== 'unknown' ? { profileType: fact(profile as 'involute' | 'cycloidal' | 'other') } : {}),
       ...(teeth !== '' && confirmedTeeth ? { toothCount: { ...fact(Number(teeth)), ...(damageHypothesisTransferred
         ? { note: 'Сначала перенесена гипотеза полного числа зубьев при локальном повреждении; затем пользователь отдельно подтвердил полное число, включая сломанные.' } : {}) } } : {}),
       ...(diameter !== '' && !rack ? { tipDiameterMm: diameterFact(Number(diameter)) } : {}),
@@ -245,7 +245,7 @@ export function PhotoWizard({ onApply, onManual, onManualFamily, onDraftChange, 
         onDraftChange={() => { onDraftChange(); setFamilyApplication(null); setFamilyPending(true); }} onApply={applyFamily}
         onCancel={() => { onDraftChange(); setFamilyApplication(null); setFamilyPending(false); }} />
       {familyPending && <p className="family-notice" role="status">Ответы о типе ещё не применены. Завершите помощник или вернитесь к прямому выбору типа.</p>}
-      {!supported && <div className="expert-note"><p>{kind === 'other' ? 'Для этого типа нужны отдельные исходные параметры. Циклоидальное, коническое колесо и ZA-червяк доступны в ручном режиме.' : 'Осмотрите боковую поверхность: прямые, косые и шевронные зубья могут иметь похожий торцевой контур. У внутреннего колеса зубья направлены к центру кольца.'}</p><button className="inline-link" onClick={onManual}>Перейти к ручному вводу <ArrowRight size={14} /></button></div>}
+      {!supported && <div className="expert-note"><p>{kind === 'other' ? 'Для этого типа нужны отдельные исходные параметры. Циклоидальное, коническое колесо и ZA-червяк доступны в ручном режиме.' : 'Осмотрите боковую поверхность: прямые, косые и шевронные зубья могут иметь похожий торцевой контур. У внутреннего колеса зубья направлены к центру кольца.'}</p><button className="inline-link" onClick={() => onManual()}>Перейти к ручному вводу <ArrowRight size={14} /></button></div>}
       {toothCountResetReason && <p className="family-notice" role="status">{toothCountResetReason === 'wheel-rack-meaning'
         ? 'При переходе на рейку или с неё прежнее число очищено: у колеса задают полное число зубьев, у рейки — длину моделируемого участка. Укажите значение для выбранного типа.'
         : 'Выбранный тип расходится с подсказкой формы на фото. Число из прежнего варианта очищено; проверьте его для выбранной детали.'}</p>}
@@ -256,10 +256,14 @@ export function PhotoWizard({ onApply, onManual, onManualFamily, onDraftChange, 
     <section hidden={step !== 2} aria-label="Масштаб и профиль">
       <p className="step-intro">Известный размер задаёт масштаб. Профиль и его углы берём из измерений или документации — по одному контуру их не определить.</p>
       <PhotoClarificationPlan plan={clarificationPlan} active={active && step === 2} />
-      <Choice active={active && step === 2} id="photo-profile" label="Профиль по чертежу или измерениям" value={profile} onChange={v => editProfile(setProfile, v)} options={{ unknown: 'Не подтверждён', involute: 'Эвольвентный подтверждён', other: 'Циклоидальный или другой' }} />
-      {profile === 'other' && <div className="expert-note" role="status">
-        <p>Для циклоидального и специального профиля нужна отдельная геометрия. Фото-помощник не подменяет её эвольвентой. Перейдите к ручным настройкам и выберите подходящее семейство — снимок и ответы останутся в этом черновике.</p>
-        <button className="inline-link" onClick={onManual}>Выбрать геометрию вручную <ArrowRight size={14} /></button>
+      <Choice active={active && step === 2} id="photo-profile" label="Профиль по чертежу или измерениям" value={profile} onChange={v => editProfile(setProfile, v)} options={{ unknown: 'Не подтверждён', involute: 'Эвольвентный подтверждён', cycloidal: 'Циклоидальный подтверждён', other: 'Другой / специальный профиль' }} />
+      {(profile === 'cycloidal' || profile === 'other') && <div className="expert-note" role="status">
+        <p>{profile === 'cycloidal'
+          ? 'Вы указали циклоидальный профиль. Фото-помощник не подменяет его эвольвентой; откроем отдельную циклоидальную модель для ручной настройки.'
+          : 'Для специального профиля нужна отдельная геометрия. Фото-помощник не подменяет её эвольвентой. Выберите доступную модель вручную; фото и ответы сохранятся при возврате к помощнику.'}</p>
+        <button className="inline-link" onClick={() => onManual(profile === 'cycloidal' ? 'cycloidal' : undefined)}>
+          {profile === 'cycloidal' ? 'Продолжить с циклоидальной моделью' : 'Выбрать геометрию вручную'} <ArrowRight size={14} />
+        </button>
       </div>}
       {image && imageSize && supported && !rack && <PhotoScale key={`${imageSize.id}-${analysisRevision}-${kind}`} active={active && step === 2} image={image} width={imageSize.width} height={imageSize.height} internal={internal} isApplied={photoMeasurement !== null}
         onInvalidated={invalidatePhotoMeasurement} onMeasured={measurement => { onDraftChange(); invalidateSpan(); setPhotoMeasurement(measurement); setDiameter(String(measurement.result.diameterMm)); setDiameterMethod('tip_circle'); }} />}
