@@ -54,8 +54,12 @@ const labels: Record<keyof ModelParams, string> = {
   profileTolerance: 'Допуск профиля, мм', internalCutterTeeth: 'Зубья долбяка', internalCutterProfileShift: 'Смещение долбяка',
   internalCutterAddendumCoefficient: 'Высота головки долбяка / m', internalCutterTipRadiusCoefficient: 'Радиус долбяка / m', internalCutterThinning: 'Утонение долбяка, мм',
   wormStarts: 'Заходы червяка', wormDiameterFactor: 'Коэффициент диаметра червяка', wormHand: 'Направление червяка',
+  addendumCoefficient: 'Высота головки ha*', clearanceCoefficient: 'Радиальный зазор c*',
+  keywayWidth: 'Ширина шпоночного паза, мм', keywayDepth: 'Глубина паза t₂, мм', hubDiameter: 'Диаметр ступицы, мм', hubLength: 'Длина ступицы, мм',
   cycloidRollingRadius: 'Производящая окружность, мм', bevelMateTeeth: 'Зубья ответного конического колеса', bevelShaftAngleDeg: 'Угол осей, °',
 };
+
+const bodyFeatureKeys: (keyof ModelParams)[] = ['keywayWidth', 'keywayDepth', 'hubDiameter', 'hubLength'];
 
 function format(value: unknown): string {
   if (value === null || value === undefined || typeof value === 'number' && !Number.isFinite(value)) return 'Не задано';
@@ -74,6 +78,9 @@ function applies(key: keyof ModelParams, params: ModelParams): boolean {
   if (key === 'rimThickness') return isInternalKind(kind);
   if (key === 'rackBaseHeight') return isRackKind(kind);
   if (key === 'toolTipRadiusCoefficient') return ['spur', 'helical', 'herringbone'].includes(kind);
+  if (bodyFeatureKeys.includes(key)) return ['spur', 'helical', 'herringbone'].includes(kind);
+  if (key === 'addendumCoefficient') return !['worm', 'cycloidal', 'bevel'].includes(kind);
+  if (key === 'clearanceCoefficient') return !['worm', 'cycloidal', 'bevel', 'internal'].includes(kind);
   if (key === 'helixAngleDeg') return isHelicalKind(kind);
   if (key === 'bore') return !isInternalKind(kind) && !isRackKind(kind);
   if (key === 'teeth') return kind !== 'worm';
@@ -87,6 +94,9 @@ function comparisonValue(params: ModelParams, key: keyof ModelParams): unknown {
   if (params[key] !== undefined) return params[key];
   if (key in defaultInternalCutter) return defaultInternalCutter[key as keyof typeof defaultInternalCutter];
   if (key === 'toolTipRadiusCoefficient') return .3;
+  if (key === 'addendumCoefficient') return 1;
+  if (key === 'clearanceCoefficient') return .25;
+  if (bodyFeatureKeys.includes(key)) return 0;
   if (key === 'rimThickness' || key === 'rackBaseHeight') return 3 * params.module;
   if (key === 'cycloidRollingRadius') return Math.min(2 * params.module, params.module * params.teeth / 4);
   if (key === 'bevelMateTeeth') return params.teeth;

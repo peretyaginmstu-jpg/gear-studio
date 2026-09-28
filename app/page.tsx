@@ -1,5 +1,5 @@
 "use client";
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Camera, Cog, ArrowRight, ArrowLeft, BookOpen, Check, Pencil, Info, FileJson, Grid2X2, ScanLine, SlidersHorizontal, Box, Download } from 'lucide-react';
 import { Toaster } from 'sonner';
 import { GearViewer } from '@/components/gear/GearViewer';
@@ -7,13 +7,15 @@ import { PhotoWizard } from '@/components/gear/PhotoWizard';
 import { ReferenceDialog } from '@/components/gear/ReferenceDialog';
 import { ParameterEditor } from '@/components/gear/ParameterEditor';
 import { SpanMeasurementAssistant } from '@/components/gear/SpanMeasurementAssistant';
+import { PinMeasurementTool } from '@/components/gear/PinMeasurementTool';
+import { StarterTools } from '@/components/gear/StarterTools';
 import { FamilyAssistant } from '@/components/gear/FamilyAssistant';
 import { ModelChips, ModelSummary, ModelInspection } from '@/components/gear/ModelSummary';
 import { CheckoutActions } from '@/components/gear/CheckoutActions';
 import { useGearTool } from '@/components/gear/useGearTool';
 import { useJourney } from '@/components/gear/useJourney';
-import { validateMesh } from '@/lib/gearMath';
-import { buildModelMesh, defaultModel, type ModelParams, type ModelKind } from '@/lib/model';
+import { useModelCheck } from '@/components/gear/useModelCheck';
+import { defaultModel, type ModelParams, type ModelKind } from '@/lib/model';
 import { canVisit, checkoutSnapshot, hasCurrentModel, type JourneyStage, type InputMode } from '@/lib/journey';
 import { APP_VERSION } from '@/lib/appVersion';
 import { ProjectWorkspace, type ProjectSession } from '@/components/gear/ProjectWorkspace';
@@ -35,14 +37,7 @@ function Studio({ project }: { project: ProjectSession }) {
   const { state, send } = useJourney(project.initial, project.onJourney), heading = useRef<HTMLHeadingElement>(null);
   const referencePhotos = useReferencePhotos(() => send({ type: 'edit-reference-photos' }));
   const [reference, setReference] = useState(false);
-  const deferred = useDeferredValue(state.manualDraft), updating = deferred !== state.manualDraft;
-  const manualCheck = useMemo(() => {
-    if (state.mode !== 'manual' || state.stage !== 'input') return { error: null };
-    try {
-      const mesh = buildModelMesh(deferred);
-      return { error: validateMesh(mesh).valid ? null : 'Сетка не прошла проверку. Измените параметры.' };
-    } catch (e) { return { error: e instanceof Error ? e.message : 'Не удалось построить профиль.' }; }
-  }, [deferred, state.mode, state.stage]);
+  const manualCheck = useModelCheck(state.manualDraft, state.mode === 'manual' && state.stage === 'input'), updating = manualCheck.pending;
   useEffect(() => {
     const frame = requestAnimationFrame(() => { heading.current?.focus({ preventScroll: true }); window.scrollTo({ top: 0, behavior: 'instant' }); });
     return () => cancelAnimationFrame(frame);
@@ -118,13 +113,15 @@ function Studio({ project }: { project: ProjectSession }) {
             <div hidden={state.mode !== 'manual'}>
               {photoHandoffNotice && <p className="family-notice" role="status">{photoHandoffNotice}</p>}
               <ReferencePhotos controller={referencePhotos} active={inputActive && state.mode === 'manual'} disabled={project.busy} />
-              <ParameterEditor active={inputActive && state.mode === 'manual'} params={state.manualDraft} onChange={change} onKind={selectKind}
+              <StarterTools onApply={params => { send({ type: 'clear-manual-span' }); send({ type: 'clear-manual-family' }); edit(params); }} />
+              <ParameterEditor active={inputActive && state.mode === 'manual'} params={state.manualDraft} onChange={change} onPatch={patch => edit({ ...state.manualDraft, ...patch })} onKind={selectKind}
                 onHand={hand => edit({ ...state.manualDraft, wormHand: hand })} onReset={() => edit(defaultModel(state.manualDraft.kind))} onReference={() => setReference(true)}
                 familyAssistant={<FamilyAssistant active={inputActive && state.mode === 'manual'} source="manual" application={state.manualFamily} engaged={state.manualFamilyPending || !!state.manualFamily}
                   onDraftChange={() => send({ type: 'edit-manual-family' })} onApply={application => send({ type: 'apply-manual-family', application })} onCancel={() => send({ type: 'clear-manual-family' })} />} />
               {state.manualDraft.kind === 'spur' && <SpanMeasurementAssistant teeth={state.manualDraft.teeth} toolTipRadiusCoefficient={state.manualDraft.toolTipRadiusCoefficient ?? .3}
                 application={state.manualSpan} engaged={state.manualSpanPending || state.manualSpan !== null}
                 onDraftChange={() => send({ type: 'edit-manual-span' })} onApply={application => send({ type: 'apply-manual-span', application })} onCancel={() => send({ type: 'clear-manual-span' })} />}
+              <PinMeasurementTool params={state.manualDraft} onApplyShift={x => edit({ ...state.manualDraft, profileShift: x, backlash: 0 })} />
               <div className="manual-build-status" aria-live="polite">{state.manualFamilyPending ? <p>Ответы о типе ещё не применены. Завершите помощник или вернитесь в нём к прямому выбору типа.</p> : state.manualSpanPending ? <p>Измерения ещё не применены. Завершите помощник или выберите в нём прямой ввод параметров.</p> : updating ? <p>Проверяем параметры…</p> : manualCheck.error ? <p className="inline-error" role="alert">{manualCheck.error}</p> : <p><Check size={17} /> Параметры можно использовать для построения.</p>}</div>
               <button className="primary-button full build-model-button" disabled={state.manualFamilyPending || state.manualSpanPending || updating || !!manualCheck.error} onClick={buildManual}>Построить модель <ArrowRight size={20} /></button>
             </div>
@@ -171,7 +168,8 @@ function Studio({ project }: { project: ProjectSession }) {
             <button className="primary-button full package-primary" disabled={!state.choice} onClick={() => navigate('checkout')}>Продолжить <ArrowRight size={20} /></button>
             <p className="delivery-note"><Info size={19} /> Плотность STL не меняет аналитический профиль и не является классом точности. Платежи пока не подключены.</p>
           </>}
-          {checkout && <CheckoutActions model={checkout.model} choice={checkout.choice} onChange={() => navigate('delivery')} projectName={project.name} />}
+          {checkout && <CheckoutActions model={checkout.model} choice={checkout.choice} onChange={() => navigate('delivery')} projectName={project.name}
+            onAdjustParams={params => { send({ type: 'choose-input', mode: 'manual' }); send({ type: 'clear-manual-span' }); send({ type: 'clear-manual-family' }); edit(params); }} />}
         </aside>
         <section className="engineering-panel"><ModelInspection model={model} onReference={() => setReference(true)} /></section>
       </div>}

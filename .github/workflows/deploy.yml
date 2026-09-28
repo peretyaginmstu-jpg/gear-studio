@@ -26,6 +26,14 @@ jobs:
         run: npm run build:pages
         env:
           NEXT_PUBLIC_BASE_PATH: /gear-studio
+          # Адрес студии Layers (переменная репозитория LAYERS_URL); пусто — кнопка заказа скрыта.
+          NEXT_PUBLIC_LAYERS_URL: ${{ vars.LAYERS_URL }}
+      - name: Browser checks
+        run: |
+          npx playwright install --with-deps chromium
+          npm run test:e2e
+        env:
+          NEXT_PUBLIC_BASE_PATH: /gear-studio
       - uses: actions/upload-pages-artifact@v3
         if: github.ref == 'refs/heads/main'
         with:

@@ -25,6 +25,17 @@ export interface GearParams {
   profileShift: number;
   /** Normal tooth-thickness reduction PER GEAR at reference cylinder, not total pair backlash. */
   backlash: number;
+  /** Basic rack addendum coefficient ha*, default 1. Stub and long-addendum systems change it. */
+  addendumCoefficient?: number;
+  /** Basic rack bottom clearance coefficient c*, default 0.25; not used by the generated internal spur root. */
+  clearanceCoefficient?: number;
+  /** Parallel-key slot width b in the bore of an external circular gear, millimetres. */
+  keywayWidth?: number;
+  /** Slot depth t2 beyond the bore surface at the key centreline, millimetres. */
+  keywayDepth?: number;
+  /** One-sided cylindrical hub on the +z face of an external circular gear. */
+  hubDiameter?: number;
+  hubLength?: number;
   /** Material outside an internal gear's root circle, default 3 mn. */
   rimThickness?: number;
   /** Backing below a rack's root line, default 3 mn. */
@@ -69,6 +80,11 @@ export interface GearDimensions {
   rackHeight: number;
   /** Signed x offset between rack end faces, width * tan(beta); zero for circular gears. */
   rackAxialOffset: number;
+  /** Present for the cylindrical involute kernel; other kernels keep their own tooth systems. */
+  addendumCoefficient?: number;
+  clearanceCoefficient?: number;
+  /** Axial length including a hub; equals width without one. */
+  overallLength?: number;
 }
 export interface GearDerived { params: GearParams; dimensions: GearDimensions; warnings: GearWarning[]; internalCutterGeometry?: InternalCutterGeometry }
 export interface Point2 { x: number; y: number }
@@ -138,14 +154,17 @@ export function deriveGear(input: GearParams): GearDerived {
   const sn = mn * (PI / 2 + (internal ? -2 : 2) * p.profileShift * Math.tan(an)) - p.backlash;
   const st = sn / cb, pt = PI * mt;
   if (!(sn > 0.05 * mn && st < pt - 0.05 * mn)) fail('TOOTH_THICKNESS', 'Смещение и зазор дают недопустимую толщину зуба.');
-  const ha = mn * (1 + (internal ? -1 : 1) * p.profileShift);
-  let hf = mn * (1.25 + (internal ? 1 : -1) * p.profileShift);
+  const haStar = p.addendumCoefficient ?? 1, cStar = p.clearanceCoefficient ?? .25;
+  if (!(haStar >= .5 && haStar <= 1.5)) fail('ADDENDUM_COEFFICIENT', 'Коэффициент высоты головки ha* должен быть от 0,5 до 1,5.');
+  if (!(cStar >= .05 && cStar <= .6)) fail('CLEARANCE_COEFFICIENT', 'Коэффициент радиального зазора c* должен быть от 0,05 до 0,6.');
+  const ha = mn * (haStar + (internal ? -1 : 1) * p.profileShift);
+  let hf = mn * (haStar + cStar + (internal ? 1 : -1) * p.profileShift);
   const ra = internal ? d / 2 - ha : d / 2 + ha;
   let rf = internal ? d / 2 + hf : d / 2 - hf;
   const warnings: GearWarning[] = [];
   if (!rack && !(Math.min(ra, rf) > mn * 0.05)) fail('ROOT_RADIUS', 'Радиусы при этих параметрах недопустимы.');
   const zv = p.teeth / cb ** 3;
-  const xmin = 1 - zv * Math.sin(an) ** 2 / 2;
+  const xmin = haStar - zv * Math.sin(an) ** 2 / 2;
   if (!rack && !internal && p.profileShift < xmin - 1e-8)
     warnings.push({code:'UNDERCUT',severity:'warning',message:`Возможное подрезание: ориентир x ≥ ${xmin.toFixed(3)}. Подрезанная переходная кривая здесь не моделируется.`});
   if (internal && ra < rb)
@@ -154,6 +173,25 @@ export function deriveGear(input: GearParams): GearDerived {
   if (internalCutterGeometry) { rf = internalCutterGeometry.rootRadius; hf = rf - d / 2; }
   if (!rack && !internal && p.bore / 2 >= rf - mn * 0.05)
     fail('BORE_INTERSECTION', 'Отверстие пересекает основание зубьев. Уменьшите его диаметр.');
+  const bodyKeys = ['keywayWidth', 'keywayDepth', 'hubDiameter', 'hubLength'] as const;
+  const keyway = (p.keywayWidth ?? 0) > 0 || (p.keywayDepth ?? 0) > 0, hub = (p.hubDiameter ?? 0) > 0 || (p.hubLength ?? 0) > 0;
+  if ((keyway || hub) && (rack || internal)) fail('BODY_FEATURE_KIND', 'Шпоночный паз и ступица доступны только для наружных цилиндрических колёс.');
+  for (const key of bodyKeys) if ((p[key] ?? 0) < 0) fail('BODY_FEATURE_RANGE', 'Размеры паза и ступицы не могут быть отрицательными.');
+  if (hub) {
+    const D = p.hubDiameter ?? 0, L = p.hubLength ?? 0;
+    if (!(D > 0 && L > 0)) fail('HUB_INCOMPLETE', 'Для ступицы задайте и диаметр, и длину.');
+    if (!(L <= 500)) fail('HUB_RANGE', 'Длина ступицы не должна превышать 500 мм.');
+    if (!(D / 2 <= rf - mn * .25)) fail('HUB_DIAMETER', 'Ступица должна быть меньше диаметра впадин хотя бы на 0,5 модуля.');
+    if (!(D / 2 >= p.bore / 2 + Math.max(.5, .1 * p.bore))) fail('HUB_WALL', 'Стенка ступицы вокруг отверстия слишком тонкая.');
+  }
+  if (keyway) {
+    const b = p.keywayWidth ?? 0, t = p.keywayDepth ?? 0, R = p.bore / 2;
+    if (!(R > 0)) fail('KEYWAY_WITHOUT_BORE', 'Шпоночный паз требует отверстия.');
+    if (!(b > 0 && t > 0)) fail('KEYWAY_INCOMPLETE', 'Для шпоночного паза задайте ширину и глубину.');
+    if (!(b <= 1.6 * R)) fail('KEYWAY_WIDTH', 'Ширина паза не должна превышать 0,8 диаметра отверстия.');
+    const wall = Math.min(rf - mn * .25, hub ? (p.hubDiameter ?? 0) / 2 : Infinity) - Math.max(.5, .05 * p.bore);
+    if (!(Math.hypot(R + t, b / 2) <= wall)) fail('KEYWAY_WALL', 'Паз слишком глубокий: стенка до впадин зубьев или поверхности ступицы слишком тонкая.');
+  }
   const rim = p.rimThickness ?? 3 * mn;
   if (internal && !(rim >= 0.25 * mn)) fail('RIM_THICKNESS', 'Толщина обода должна быть не менее 0,25 модуля.');
   const baseHeight = p.rackBaseHeight ?? 3 * mn;
@@ -179,6 +217,8 @@ export function deriveGear(input: GearParams): GearDerived {
     : `Корень рассчитывается как огибающая производящей рейки с радиусом вершины ${(mn*(p.toolTipRadiusCoefficient??.3)).toFixed(3)} мм; профиль инструмента принят как исходный параметр.` });
   if (internal) warnings.push({code:'INTERNAL_PAIR',severity:'warning',message:'Для внутреннего зацепления необходимы данные ответного колеса: интерференция и собираемость пары ещё не проверены.'});
   if (rack && p.profileShift !== 0) warnings.push({code:'RACK_DATUM',severity:'info',message:'Смещение рейки меняет положение исходной линии; размещение в паре нужно учитывать отдельно.'});
+  if (haStar !== 1 || (cStar !== .25 && p.kind !== 'internal')) warnings.push({code:'NONSTANDARD_RACK',severity:'info',message:`Исходный контур задан вручную: ha* = ${haStar}, c* = ${cStar}. Проверьте его по чертежу или инструменту.`});
+  if (keyway) warnings.push({code:'KEYWAY',severity:'info',message:`Шпоночный паз ${p.keywayWidth} × ${p.keywayDepth} мм (b × t₂) с острыми углами; скругления и допуск паза задаются отдельно в требованиях.`});
   if (p.kind === 'herringbone') warnings.push({code:'HERRINGBONE_SEAM',severity:'info',message:'Шеврон построен с общей средней кромкой, без технологической канавки; обе половины имеют одну замкнутую оболочку.'});
   const dimensions: GearDimensions = {
     normalModule:mn, transverseModule:mt, normalPressureAngleDeg:p.pressureAngleDeg,
@@ -191,6 +231,7 @@ export function deriveGear(input: GearParams): GearDerived {
     twistAngleDeg:rack?0:p.width*Math.tan(beta)/(d/2)/DEG,
     rackLength:rack?pt*p.teeth:0, rackHeight:rack?ha+hf+baseHeight:0,
     rackAxialOffset:rack?p.width*Math.tan(beta):0,
+    addendumCoefficient:haStar, clearanceCoefficient:cStar, overallLength:p.width+(hub?p.hubLength??0:0),
   };
   return { params:p, dimensions, warnings, internalCutterGeometry };
 }
@@ -251,9 +292,44 @@ export function buildGearProfile(p:GearParams, flankSamples=12):GearProfile {
   }
   const circle=(radius:number)=>outline.map(v=>polar(radius,Math.atan2(v.y,v.x)));
   return {...derived,outer:internal?circle(d.outsideDiameter/2):outline,
-    hole:internal?outline:p.bore>0?circle(p.bore/2):null,rootDiagnostics:generated?.diagnostics,internalRootDiagnostics:generatedInternal?.diagnostics};
+    hole:internal?outline:p.bore>0?boreContour(p.bore/2,p.keywayWidth??0,p.keywayDepth??0,samples):null,rootDiagnostics:generated?.diagnostics,internalRootDiagnostics:generatedInternal?.diagnostics};
 }
 
+/** CCW bore, optionally with a sharp-cornered parallel-key slot along +x. Strictly angle-monotone about the axis. */
+export function boreContour(radius:number, keywayWidth:number, keywayDepth:number, flankSamples=12):Point2[] {
+  const count=Math.max(48,flankSamples*8), points:Point2[]=[];
+  if(!(keywayWidth>0&&keywayDepth>0)) { for(let k=0;k<count;k++)points.push(polar(radius,TAU*k/count)); return points; }
+  const half=keywayWidth/2, corner=Math.asin(half/radius), top=radius+keywayDepth, x0=radius*Math.cos(corner);
+  const arcSteps=Math.max(8,Math.ceil(count*(TAU-2*corner)/TAU)), edgeSteps=Math.max(4,Math.ceil(flankSamples/2));
+  for(let k=0;k<arcSteps;k++)points.push(polar(radius,corner+(TAU-2*corner)*k/arcSteps));
+  for(let k=0;k<edgeSteps;k++)points.push({x:x0+(top-x0)*k/edgeSteps,y:-half});
+  for(let k=0;k<edgeSteps;k++)points.push({x:top,y:-half+keywayWidth*k/edgeSteps});
+  for(let k=0;k<edgeSteps;k++)points.push({x:top-(top-x0)*k/edgeSteps,y:half});
+  return points;
+}
+/** Triangulates the planar ring between two CCW loops that are angle-monotone about the origin. */
+export function stitchLoops(outer:{id:number;p:Point2}[], inner:{id:number;p:Point2}[], upward:boolean):number[] {
+  const norm=(a:number)=>((a%TAU)+TAU)%TAU, angle=(q:Point2)=>norm(Math.atan2(q.y,q.x));
+  const n=outer.length,m=inner.length;
+  let i0=0; for(let k=1;k<n;k++)if(angle(outer[k].p)<angle(outer[i0].p))i0=k;
+  const base=angle(outer[i0].p), rel=(q:Point2)=>norm(angle(q)-base);
+  let j0=0; for(let k=1;k<m;k++)if(rel(inner[k].p)<rel(inner[j0].p))j0=k;
+  const unwrap=(loop:{p:Point2}[],start:number)=>{ const out:number[]=[]; for(let k=0;k<loop.length;k++){ let a=base+rel(loop[(start+k)%loop.length].p); while(k&&a<out[k-1]-1e-12)a+=TAU; out.push(a);} out.push(out[0]+TAU); return out; };
+  const A=unwrap(outer,i0),B=unwrap(inner,j0),O=(k:number)=>outer[(i0+k)%n].id,H=(k:number)=>inner[(j0+k)%m].id,faces:number[]=[];
+  const tri=(a:number,b:number,c:number)=>upward?faces.push(a,b,c):faces.push(a,c,b);
+  const P=(loop:{p:Point2}[],start:number,k:number)=>loop[(start+k)%loop.length].p;
+  const ccw=(a:Point2,b:Point2,c:Point2)=>(b.x-a.x)*(c.y-a.y)-(b.y-a.y)*(c.x-a.x)>1e-12;
+  let i=0,j=0;
+  while(i<n||j<m) {
+    // Angular order first; a non-convex bore (key slot) may force the other valid diagonal.
+    const outerOk=i<n&&ccw(P(outer,i0,i),P(outer,i0,i+1),P(inner,j0,j)), innerOk=j<m&&ccw(P(outer,i0,i),P(inner,j0,j+1),P(inner,j0,j));
+    const preferOuter=j>=m||(i<n&&A[i+1]<=B[j+1]);
+    if(outerOk&&(preferOuter||!innerOk)){tri(O(i),O(i+1),H(j));i++;}
+    else if(innerOk){tri(O(i),H(j+1),H(j));j++;}
+    else fail('CAP_TRIANGULATION','Не удалось построить торец между зубчатым венцом и отверстием.');
+  }
+  return faces;
+}
 function signedArea(points:Point2[]):number { return points.reduce((s,p,i)=>{const q=points[(i+1)%points.length];return s+p.x*q.y-q.x*p.y;},0)/2; }
 /** General simple-polygon ear clipping, used only by the rack cap. */
 function triangulatePolygon(points:Point2[]):number[] {
@@ -292,6 +368,8 @@ export function buildGearMesh(params:GearParams, quality:MeshQuality={}):GearMes
   }
   if(params.kind==='herringbone'&&axialSegments%2)axialSegments++;
   if(axialSegments>256)fail('EXCESSIVE_TWIST','Для такой ширины и наклона требуется слишком много сечений. Уменьшите ширину или наклон.');
+  if(!rack&&params.kind!=='internal'&&params.kind!=='internal-helical'&&(hole||(params.hubLength??0)>0))
+    return buildExternalBodyMesh(params,profile,axialSegments,flankSamples,helical,twist);
   const ringCount=outer.length+(hole?.length??0);
   const estimatedVertices=(axialSegments+1)*ringCount+(!hole&&!rack?2:0);
   const estimatedTriangles=2*axialSegments*ringCount+(hole?4*outer.length:rack?2*(outer.length-2):2*outer.length);
@@ -333,6 +411,39 @@ export function buildGearMesh(params:GearParams, quality:MeshQuality={}):GearMes
     const bottomCentre=vertex(0,0,-params.width/2),topCentre=vertex(0,0,params.width/2);
     for(let j=0;j<outer.length;j++){const next=(j+1)%outer.length;face(topCentre,top+j,top+next);face(bottomCentre,next,j);}
   }
+  return {...profile,profile,positions:new Float32Array(positions),indices:new Uint32Array(indices),tessellation:{flankSamples,axialSegments}};
+}
+
+/** External gear whose bore/keyway and optional hub are straight prisms; only the toothed rim twists. */
+function buildExternalBodyMesh(params:GearParams,profile:GearProfile,axialSegments:number,flankSamples:number,helical:boolean,twist:number):GearMesh {
+  const {outer,hole}=profile,w=params.width,hubLength=(params.hubLength??0)>0?params.hubLength??0:0;
+  const hub=hubLength>0?Array.from({length:Math.max(48,flankSamples*8)},(_,k)=>polar((params.hubDiameter??0)/2,TAU*k/Math.max(48,flankSamples*8))):null;
+  const estimatedTriangles=2*axialSegments*outer.length+4*(outer.length+(hole?.length??0)+(hub?.length??0)*2);
+  if((axialSegments+1)*outer.length>250_000||estimatedTriangles>500_000)
+    fail('MESH_BUDGET','Слишком сложная сетка для браузера. Уменьшите ширину, число зубьев или качество дискретизации.');
+  const positions:number[]=[],indices:number[]=[];
+  const vertex=(x:number,y:number,z:number)=>{positions.push(x,y,z);return positions.length/3-1;};
+  const ring=(loop:Point2[],z:number,phase=0)=>{const co=Math.cos(phase),si=Math.sin(phase);return loop.map(p=>{const q={x:p.x*co-p.y*si,y:p.x*si+p.y*co};return {id:vertex(q.x,q.y,z),p:q};});};
+  const wall=(low:{id:number}[],high:{id:number}[],outward:boolean)=>{for(let j=0;j<low.length;j++){const n=(j+1)%low.length;
+    if(outward){indices.push(low[j].id,low[n].id,high[n].id,low[j].id,high[n].id,high[j].id);}
+    else{indices.push(low[j].id,high[n].id,low[n].id,low[j].id,high[j].id,high[n].id);}}};
+  const fan=(loop:{id:number}[],z:number,upward:boolean)=>{const c=vertex(0,0,z);for(let j=0;j<loop.length;j++){const n=(j+1)%loop.length;
+    if(upward)indices.push(c,loop[j].id,loop[n].id);else indices.push(c,loop[n].id,loop[j].id);}};
+  const rings:{id:number;p:Point2}[][]=[];
+  for(let k=0;k<=axialSegments;k++){const t=k/axialSegments;
+    const phase=helical?(params.kind==='herringbone'?twist*(.5-Math.abs(t-.5)):twist*(t-.5)):0;
+    rings.push(ring(outer,(t-.5)*w,phase));}
+  for(let k=0;k<axialSegments;k++)wall(rings[k],rings[k+1],true);
+  const bottom=rings[0],top=rings[axialSegments],zTop=w/2+hubLength;
+  const holeLow=hole?ring(hole,-w/2):null,holeHigh=hole?ring(hole,zTop):null;
+  if(holeLow&&holeHigh){wall(holeLow,holeHigh,false);indices.push(...stitchLoops(bottom,holeLow,false));}
+  else fan(bottom,-w/2,false);
+  if(hub){
+    const hubLow=ring(hub,w/2),hubHigh=ring(hub,zTop);
+    indices.push(...stitchLoops(top,hubLow,true));wall(hubLow,hubHigh,true);
+    if(holeHigh)indices.push(...stitchLoops(hubHigh,holeHigh,true));else fan(hubHigh,zTop,true);
+  } else if(holeHigh)indices.push(...stitchLoops(top,holeHigh,true));
+  else fan(top,w/2,true);
   return {...profile,profile,positions:new Float32Array(positions),indices:new Uint32Array(indices),tessellation:{flankSamples,axialSegments}};
 }
 

@@ -46,16 +46,29 @@ export function defaultModel(kind: ModelKind = 'spur'): ModelParams {
   };
 }
 
+export const cylindricalOnlyKeys = ['addendumCoefficient', 'clearanceCoefficient', 'keywayWidth', 'keywayDepth', 'hubDiameter', 'hubLength'] as const;
+
 export function buildModelMesh(input: ModelParams, quality: MeshQuality = {}): ModelMesh {
   // Each independent kernel receives only its own parameters.
-  const { wormStarts, wormDiameterFactor, wormHand, cycloidRollingRadius, bevelMateTeeth, bevelShaftAngleDeg,
+  const { wormStarts, wormDiameterFactor, wormHand, cycloidRollingRadius, bevelMateTeeth, bevelShaftAngleDeg } = input;
+  if (input.kind === 'worm' || input.kind === 'cycloidal' || input.kind === 'bevel') {
+    // Cylindrical-only extensions and the internal cutter never reach kernels with their own tooth systems.
+    const shared: Record<string, unknown> = { ...gearKernelParams({ ...input, kind: 'spur' }), kind: input.kind };
+    for (const key of cylindricalOnlyKeys) delete shared[key];
+    if (input.kind === 'worm') return buildWormMesh({ ...shared, wormStarts, wormDiameterFactor, wormHand } as WormParams, quality);
+    if (input.kind === 'cycloidal') return buildCycloidalMesh({ ...shared, cycloidRollingRadius } as CycloidalParams, quality);
+    return buildBevelMesh({ ...shared, bevelMateTeeth, bevelShaftAngleDeg } as BevelParams, quality);
+  }
+  return buildGearMesh(gearKernelParams(input), quality);
+}
+
+/** Parameters accepted by the cylindrical involute kernel; worm, cycloid and bevel fields are removed. */
+export function gearKernelParams(input: ModelParams): GearParams {
+  const { wormStarts: _ws, wormDiameterFactor: _wd, wormHand: _wh, cycloidRollingRadius: _cr, bevelMateTeeth: _bm, bevelShaftAngleDeg: _bs,
     internalCutterTeeth, internalCutterProfileShift, internalCutterAddendumCoefficient, internalCutterTipRadiusCoefficient, internalCutterThinning, ...gear } = input;
-  if (input.kind === 'worm') return buildWormMesh({ ...gear, wormStarts, wormDiameterFactor, wormHand } as WormParams, quality);
-  if (input.kind === 'cycloidal') return buildCycloidalMesh({ ...gear, cycloidRollingRadius } as CycloidalParams, quality);
-  if (input.kind === 'bevel') return buildBevelMesh({ ...gear, bevelMateTeeth, bevelShaftAngleDeg } as BevelParams, quality);
-  if (input.kind === 'internal') return buildGearMesh({ ...gear, internalCutterTeeth, internalCutterProfileShift,
-    internalCutterAddendumCoefficient, internalCutterTipRadiusCoefficient, internalCutterThinning } as GearParams, quality);
-  return buildGearMesh(gear as GearParams, quality);
+  void [_ws, _wd, _wh, _cr, _bm, _bs];
+  return (input.kind === 'internal' ? { ...gear, internalCutterTeeth, internalCutterProfileShift,
+    internalCutterAddendumCoefficient, internalCutterTipRadiusCoefficient, internalCutterThinning } : gear) as GearParams;
 }
 
 /** Public reports use null for quantities that do not belong to that tooth system. */

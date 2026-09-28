@@ -4,6 +4,7 @@ import { Check, AlertTriangle, ChevronDown, Link2 } from 'lucide-react';
 import { isRackKind, isInternalKind, isHelicalKind, modelNames, type ModelParams } from '@/lib/model';
 import type { BuiltModel } from '@/lib/journey';
 import { PairDialog } from './PairDialog';
+import { PinMeasurementTool } from './PinMeasurementTool';
 export const formatModelNumber = (n: number, digits = 2) => Number.isFinite(n) ? n.toLocaleString('ru-RU', { maximumFractionDigits: digits }) : '—';
 const fmt = formatModelNumber;
 export function ModelChips({ params }: { params: ModelParams }) {
@@ -26,6 +27,9 @@ export function ModelSummary({ params }: { params: ModelParams }) {
           <div><dt>{isBevel ? 'Внешний модуль' : isWorm ? 'Осевой модуль' : isHelicalKind(params.kind) ? 'Нормальный модуль' : 'Модуль'}</dt><dd>{moduleSymbol}&nbsp; {fmt(params.module, 6)} мм</dd></div>
           <div><dt>{isBevel ? 'По образующей' : isWorm ? 'Длина нарезки' : 'Ширина'}</dt><dd>{isWorm ? 'L' : 'b'}&nbsp; {fmt(params.width)} мм</dd></div>
           <div><dt>{internal ? 'Обод' : rack ? 'Основание' : 'Отверстие'}</dt><dd>{!internal && !rack && '⌀ '}{fmt(internal ? params.rimThickness ?? 3 * params.module : rack ? params.rackBaseHeight ?? 3 * params.module : params.bore)} мм</dd></div>
+          {(params.keywayWidth ?? 0) > 0 && <div><dt>Шпоночный паз</dt><dd>b × t₂&nbsp; {fmt(params.keywayWidth ?? 0)} × {fmt(params.keywayDepth ?? 0)} мм</dd></div>}
+          {(params.hubLength ?? 0) > 0 && <div><dt>Ступица</dt><dd>⌀ {fmt(params.hubDiameter ?? 0)} × {fmt(params.hubLength ?? 0)} мм</dd></div>}
+          {((params.addendumCoefficient ?? 1) !== 1 || (params.clearanceCoefficient ?? .25) !== .25) && <div><dt>Исходный контур</dt><dd>ha* {fmt(params.addendumCoefficient ?? 1)} · c* {fmt(params.clearanceCoefficient ?? .25)}</dd></div>}
         </dl>
   );
 }
@@ -50,6 +54,7 @@ export function ModelInspection({ model, onReference }: { model: BuiltModel; onR
             {bevel && <><div><dt>Делительный конус δ₁</dt><dd>{fmt(bevel.pitchConeAngleDeg)}°</dd></div><div><dt>Основной конус δᵦ</dt><dd>{fmt(bevel.baseConeAngleDeg)}°</dd></div><Dimension label="Конусное расстояние Rₑ" value={bevel.outerConeDistance} /><Dimension label="Малый модуль mᵢ" value={bevel.innerModule} digits={3} /><Dimension label="Высота по оси H" value={bevel.axialExtent} /></>}
             {['helical', 'herringbone', 'internal-helical', 'helical-rack'].includes(params.kind) && <Dimension label="Торцевой модуль" value={d.transverseModule} digits={3} />}
           </dl> : <p className="inline-error">{error}</p>}
+          <PinMeasurementTool params={params} />
           <div className="engineering-actions">
             <button className="secondary-button pair-button" onClick={() => setPairOpen(true)}><Link2 size={18} /> Проверить пару</button>
           </div>
