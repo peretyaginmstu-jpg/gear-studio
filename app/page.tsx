@@ -15,6 +15,7 @@ import { useJourney } from '@/components/gear/useJourney';
 import { validateMesh } from '@/lib/gearMath';
 import { buildModelMesh, defaultModel, type ModelParams, type ModelKind } from '@/lib/model';
 import { canVisit, checkoutSnapshot, hasCurrentModel, type JourneyStage, type InputMode } from '@/lib/journey';
+import { APP_VERSION } from '@/lib/appVersion';
 
 const stages: { stage: JourneyStage; title: string }[] = [
   { stage: 'input', title: 'Исходные данные' }, { stage: 'review', title: 'Проверка модели' },
@@ -45,11 +46,20 @@ export default function Home() {
   const buildManual = () => { if (!updating && !manualCheck.error && !state.manualSpanPending && !state.manualFamilyPending) send({ type: 'build', params: state.manualDraft, origin: 'Параметры заданы вручную', evidence: null }); };
   const photoHandoff = state.photoCycloidalHandoff, photoCountSeed = photoHandoff?.toothCountSeed;
   const photoCountStillCurrent = !!photoCountSeed && state.manualDraft.kind === 'cycloidal' && state.manualDraft.teeth === photoCountSeed.value;
-  const photoHandoffNotice = photoHandoff ? photoCountSeed
+  const photoModuleInference = photoHandoff?.moduleInference;
+  const photoModuleSeed = photoModuleInference?.status === 'ready' ? photoModuleInference : null;
+  const photoModuleStillCurrent = !!photoModuleSeed && photoCountStillCurrent && state.manualDraft.kind === 'cycloidal' && state.manualDraft.module === photoModuleSeed.moduleMm;
+  const photoCountNotice = photoCountSeed
     ? photoCountStillCurrent
-      ? `Из фото-помощника перенесено проверенное полное число зубьев z=${photoCountSeed.value}. Источник: ${photoCountSourceLabels[photoCountSeed.source]}. Проверьте число и остальные параметры перед построением.`
-      : `В фото-помощнике было подтверждено z=${photoCountSeed.value} (${photoCountSourceLabels[photoCountSeed.source]}), а текущее z=${state.manualDraft.teeth} задано вручную. В паспорте будет отмечено, что перенесённое значение изменено.`
-    : `Фото-помощник не передал подтверждённое число зубьев. Проверьте текущее z=${state.manualDraft.teeth} по детали или чертежу: это не результат распознавания.` : null;
+      ? `Перенесено проверенное полное число зубьев z=${photoCountSeed.value} (${photoCountSourceLabels[photoCountSeed.source]}).`
+      : `В фото-помощнике подтверждено z=${photoCountSeed.value}, текущее z=${state.manualDraft.teeth} задано вручную.`
+    : `Полное число зубьев не перенесено из фото; проверьте z=${state.manualDraft.teeth} по детали или чертежу.`;
+  const photoModuleNotice = photoModuleSeed
+    ? photoModuleStillCurrent
+      ? `Расчётный модуль m=${photoModuleSeed.moduleMm} мм выведен из подтверждённых z=${photoModuleSeed.evidence.toothCount.value} и da=${photoModuleSeed.evidence.tipDiameterMm.value} мм по формуле m=da/(z+2); источник da: ${photoCountSourceLabels[photoModuleSeed.evidence.tipDiameterMm.source]}.`
+      : `Фото-модуль m=${photoModuleSeed.moduleMm} мм рассчитан при z=${photoModuleSeed.evidence.toothCount.value}; сейчас модель использует z=${state.manualDraft.teeth} и m=${state.manualDraft.module}. После изменения параметров проверьте модуль; паспорт сохранит исходный фото-расчёт отдельно от текущих параметров.`
+    : `Модуль по фото не рассчитан${photoModuleInference?.status === 'missing' ? `: ${photoModuleInference.questions.join(' ')}` : photoModuleInference?.status === 'rejected' ? `: ${photoModuleInference.reason}` : '.'} Текущее m=${state.manualDraft.module} требует ручной проверки.`;
+  const photoHandoffNotice = photoHandoff ? `${photoCountNotice} ${photoModuleNotice} Проверьте геометрию перед построением.` : null;
   const model = hasCurrentModel(state) ? state.built : null, checkout = checkoutSnapshot(state);
   const modelVisible = model && ['review', 'delivery', 'checkout'].includes(state.stage);
   const inputActive = state.stage === 'input', photoActive = inputActive && state.mode === 'photo';
@@ -105,8 +115,8 @@ export default function Home() {
               <div className="manual-build-status" aria-live="polite">{state.manualFamilyPending ? <p>Ответы о типе ещё не применены. Завершите помощник или вернитесь в нём к прямому выбору типа.</p> : state.manualSpanPending ? <p>Измерения ещё не применены. Завершите помощник или выберите в нём прямой ввод параметров.</p> : updating ? <p>Проверяем параметры…</p> : manualCheck.error ? <p className="inline-error" role="alert">{manualCheck.error}</p> : <p><Check size={17} /> Параметры можно использовать для построения.</p>}</div>
               <button className="primary-button full build-model-button" disabled={state.manualFamilyPending || state.manualSpanPending || updating || !!manualCheck.error} onClick={buildManual}>Построить модель <ArrowRight size={20} /></button>
             </div>
-            <div hidden={state.mode !== 'photo'}><PhotoWizard active={photoActive} onDraftChange={() => send({ type: 'edit-photo' })} onApply={(params, origin, evidence) => send({ type: 'build', params: { ...defaultModel(params.kind), ...params }, origin, evidence })} onManual={(kind, toothCount) => {
-              if (kind === 'cycloidal') send({ type: 'photo-to-manual-cycloidal', toothCount });
+            <div hidden={state.mode !== 'photo'}><PhotoWizard active={photoActive} onDraftChange={() => send({ type: 'edit-photo' })} onApply={(params, origin, evidence) => send({ type: 'build', params: { ...defaultModel(params.kind), ...params }, origin, evidence })} onManual={(kind, handoff) => {
+              if (kind === 'cycloidal') send({ type: 'photo-to-manual-cycloidal', ...handoff });
               else { chooseInput('manual'); if (kind) selectKind(kind); }
             }}
               onManualFamily={application => { chooseInput('manual'); send({ type: 'apply-manual-family', application }); }} /></div>
@@ -153,7 +163,7 @@ export default function Home() {
         <section className="engineering-panel"><ModelInspection model={model} onReference={() => setReference(true)} /></section>
       </div>}
     </main>
-    <footer className="page-footer"><span>ЗАЦЕПЛЕНИЕ <span className="muted">/ инженерная мастерская</span></span><span>Локальные вычисления · Миллиметры · Версия 0.14</span></footer>
+    <footer className="page-footer"><span>ЗАЦЕПЛЕНИЕ <span className="muted">/ инженерная мастерская</span></span><span>Локальные вычисления · Миллиметры · Версия {APP_VERSION}</span></footer>
     <ReferenceDialog open={reference} onOpenChange={setReference} />
   </div>;
 }

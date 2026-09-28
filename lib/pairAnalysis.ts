@@ -3,6 +3,7 @@ import { defaultModel, type ModelKind, type ModelParams } from './model.ts';
 import type { InternalCutterGeometry } from './generatedInternalRoot.ts';
 import { buildBevelMesh, type BevelDimensions, type BevelParams, type Point3 } from './bevelGeometry.ts';
 import { analyzeCycloidalPair, type CycloidalPairGeometry, type CycloidalPairModel } from './cycloidalPair.ts';
+import { APP_VERSION } from './appVersion.ts';
 
 export type PairStatus = 'pass' | 'warning' | 'fail' | 'unsupported';
 export type PairFamily = 'external_cylindrical' | 'internal_cylindrical' | 'rack_pinion' | 'bevel_pitch_cones' | 'external_cycloidal' | 'unsupported';
@@ -133,7 +134,7 @@ export function createPairAnalysisDocument(input: PairInput, createdAt = new Dat
   const coneInput = snapshot.first.kind === 'bevel' || snapshot.second.kind === 'bevel';
   const cycloidalInput = snapshot.first.kind === 'cycloidal' || snapshot.second.kind === 'cycloidal';
   return {
-    schema: 'zatseplenie.pair-analysis.v3', appVersion: '0.17.0', createdAt, units: 'mm',
+    schema: 'zatseplenie.pair-analysis.v3', appVersion: APP_VERSION, createdAt, units: 'mm',
     input: {
       first: snapshot.first, second: hasVisibleMate ? snapshot.second : null,
       centerDistanceMm: hasVisibleMate && !coneInput ? snapshot.centerDistanceMm ?? null : null,

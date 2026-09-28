@@ -2,12 +2,13 @@ import type { MeshValidation } from './gearMath.ts';
 import { modelDimensionsForReport, modelSpatialGeometryForReport, type ModelMesh } from './model.ts';
 import type { ModelProvenance } from './modelExport.ts';
 import { assessPrint, type PrintSettings } from './printability.ts';
+import { APP_VERSION } from './appVersion.ts';
 
 /** A local preparation file, with the same captured provenance as the model's STL passport. */
 export function createPrintBrief(mesh: ModelMesh, validation: MeshValidation, settings: PrintSettings,
   provenance: ModelProvenance, createdAt = new Date().toISOString()) {
   return {
-    schema: 'zatseplenie.print-brief.v6', appVersion: '0.17.0', createdAt, units: 'mm',
+    schema: 'zatseplenie.print-brief.v6', appVersion: APP_VERSION, createdAt, units: 'mm',
     origin: provenance.origin, evidence: structuredClone(provenance.evidence), parameters: mesh.params,
     dimensions: modelDimensionsForReport(mesh),
     wormDimensions: 'wormDimensions' in mesh ? mesh.wormDimensions : null,

@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable @next/next/no-img-element -- The uploaded photo is previewed from an in-memory data URL and stays in the browser. */
 import { useMemo, useRef, useState } from 'react';
 import { Camera, Upload, ScanLine, Check, ArrowRight, ArrowLeft } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -19,10 +20,13 @@ import { PhotoRegionDialog } from './PhotoRegionDialog';
 import { buildPhotoClarificationPlan } from '@/lib/photoClarificationPlan';
 import { PhotoClarificationPlan } from './PhotoClarificationPlan';
 import { confirmedCycloidalPhotoToothCount, transitionPhotoToothCountDraft, type ConfirmedCycloidalPhotoToothCount, type PhotoToothCountResetReason } from '@/lib/photo-draft';
+import { inferCycloidalPhotoModule, type CycloidalPhotoModuleInference } from '@/lib/cycloidalPhotoInference';
 
 type ApplyParams = Partial<ModelParams> & { kind: InferredGearKind };
 const inferredKinds: InferredGearKind[] = ['spur', 'helical', 'herringbone', 'internal', 'internal-helical', 'rack', 'helical-rack'];
-export function PhotoWizard({ onApply, onManual, onManualFamily, onDraftChange, active = true }: { onApply: (p: ApplyParams, source: string, evidence: unknown) => void; onManual: (kind?: ModelKind, toothCount?: ConfirmedCycloidalPhotoToothCount) => void;
+export function PhotoWizard({ onApply, onManual, onManualFamily, onDraftChange, active = true }: { onApply: (p: ApplyParams, source: string, evidence: unknown) => void; onManual: (kind?: ModelKind, handoff?: {
+  toothCount?: ConfirmedCycloidalPhotoToothCount; moduleInference: CycloidalPhotoModuleInference; photoScaleEvidence?: unknown;
+}) => void;
   onManualFamily: (application: FamilyApplication) => void; onDraftChange: () => void; active?: boolean }) {
   const [step, setStep] = useState(0), stepHeading = useRef<HTMLHeadingElement>(null);
   const goStep = (next: number) => { setStep(next); requestAnimationFrame(() => { stepHeading.current?.focus({ preventScroll: true }); stepHeading.current?.scrollIntoView({ block: 'start' }); }); };
@@ -146,6 +150,7 @@ export function PhotoWizard({ onApply, onManual, onManualFamily, onDraftChange, 
       ...(standard ? { standardAddendum: fact(true) } : {}),
     };
   }, [analysis, supported, kind, source, profile, teeth, confirmedTeeth, damageHypothesisTransferred, diameter, diameterMethod, pitch, beta, alpha, shift, standard, rack, helical, photoMeasurement]);
+  const cycloidalModuleInference = useMemo(() => inferCycloidalPhotoModule(input, photoMeasurement?.result.uncertainty), [input, photoMeasurement]);
   const invalidatePhotoMeasurement = () => {
     onDraftChange(); invalidateSpan();
     if (photoMeasurement) { setDiameter(''); setDiameterMethod('unknown'); }
@@ -157,11 +162,11 @@ export function PhotoWizard({ onApply, onManual, onManualFamily, onDraftChange, 
     setPhotoMeasurement(null); setDiameter(value);
   };
   const result = useMemo(() => inferGearFromMeasurements(input), [input]);
-  const spanPath = kind === 'spur' && (spanPending || spanApplication !== null);
+  const spanPath = profile === 'involute' && kind === 'spur' && (spanPending || spanApplication !== null);
   const clarificationPlan = useMemo(() => buildPhotoClarificationPlan({ input, selectedKind: kind, enteredToothCount: teeth,
     toothCountConfirmed: confirmedTeeth, familyReady, symmetricHerringbone: symmetric, analysisRegion: analysisEvidence,
-    span: kind === 'spur' && spanPending ? { mode: 'pending' } : kind === 'spur' && spanApplication ? { mode: 'applied', application: spanApplication } : { mode: 'direct' },
-  }), [input, kind, teeth, confirmedTeeth, familyReady, symmetric, analysisEvidence, spanPending, spanApplication]);
+    span: profile === 'involute' && kind === 'spur' && spanPending ? { mode: 'pending' } : profile === 'involute' && kind === 'spur' && spanApplication ? { mode: 'applied', application: spanApplication } : { mode: 'direct' },
+  }), [input, profile, kind, teeth, confirmedTeeth, familyReady, symmetric, analysisEvidence, spanPending, spanApplication]);
   const profileParameters = spanPath ? spanApplication?.candidate.parameters ?? null : result.status === 'ready' ? result.parameters : null;
   const calculatedModule = spanPath ? spanApplication?.candidate.parameters.module : result.calculation?.normalModuleMm;
   const bodyValid = width !== '' && Number(width) > 0 && body !== '' && (rack || internal ? Number(body) > 0 : Number(body) >= 0);
@@ -254,27 +259,50 @@ export function PhotoWizard({ onApply, onManual, onManualFamily, onDraftChange, 
       {!typeReady && <p className="field-help">Выберите тип и отдельно подтвердите полное число зубьев. Помощник типа и гипотеза контура не подтверждают число зубьев.</p>}
     </section>
     <section hidden={step !== 2} aria-label="Масштаб и профиль">
-      <p className="step-intro">Известный размер задаёт масштаб. Профиль и его углы берём из измерений или документации — по одному контуру их не определить.</p>
-      <PhotoClarificationPlan plan={clarificationPlan} active={active && step === 2} />
+      <p className="step-intro">{profile === 'cycloidal'
+        ? 'Для выбранной циклоидальной модели m можно вывести только из подтверждённых z и da при высоте ha=m. Постоянный угол давления здесь не применяется; производящую окружность настройте в ручной модели.'
+        : 'Известный размер задаёт масштаб. Профиль и его углы берём из измерений или документации — по одному контуру их не определить.'}</p>
+      {profile !== 'cycloidal' && <PhotoClarificationPlan plan={clarificationPlan} active={active && step === 2} />}
       <Choice active={active && step === 2} id="photo-profile" label="Профиль по чертежу или измерениям" value={profile} onChange={v => editProfile(setProfile, v)} options={{ unknown: 'Не подтверждён', involute: 'Эвольвентный подтверждён', cycloidal: 'Циклоидальный подтверждён', other: 'Другой / специальный профиль' }} />
       {(profile === 'cycloidal' || profile === 'other') && <div className="expert-note" role="status">
         <p>{profile === 'cycloidal'
           ? kind === 'spur'
-            ? 'Вы указали циклоидальный профиль. Доступное ядро строит внешнее прямозубое колесо; подтверждённое полное число зубьев перенесём в ручной шаблон. Модуль и производящую окружность проверьте отдельно.'
+            ? cycloidalModuleInference.status === 'ready'
+              ? 'Для выбранной геометрии модуль рассчитан по подтверждённому диаметру вершин и числу зубьев. Значение и исходные измерения будут перенесены в ручной шаблон.'
+              : 'Доступное ядро строит внешнее прямозубое колесо. Подтверждённое число зубьев перенесём; модуль останется ручным, пока не подтверждены диаметр окружности вершин и высота ha=m.'
             : `Циклоидальное ядро пока строит только внешнее прямозубое колесо. Сейчас выбран тип «${modelNames[kind as ModelKind] ?? kind}»; такую геометрию нельзя корректно подменить прямозубой моделью. Вернитесь к выбору типа или выберите «Другой / специальный профиль».`
           : 'Для специального профиля нужна отдельная геометрия. Фото-помощник не подменяет её эвольвентой. Выберите доступную модель вручную; фото и ответы сохранятся при возврате к помощнику.'}</p>
+        {profile === 'cycloidal' && kind === 'spur' && <div className="photo-cycloidal-inference" role="status">
+          {cycloidalModuleInference.status === 'ready' ? <>
+            <strong>Условный модуль: {cycloidalModuleInference.moduleMm.toLocaleString('ru-RU', { maximumFractionDigits: 6 })} мм</strong>
+            <code>m = da / (z + 2) · d = mz = {cycloidalModuleInference.pitchDiameterMm.toLocaleString('ru-RU', { maximumFractionDigits: 6 })} мм</code>
+            {cycloidalModuleInference.evidence.conditionalPhotoInterval && <span>Интервал по PhotoScale: {cycloidalModuleInference.evidence.conditionalPhotoInterval.lowerModuleMm.toLocaleString('ru-RU', { maximumFractionDigits: 6 })}–{cycloidalModuleInference.evidence.conditionalPhotoInterval.upperModuleMm.toLocaleString('ru-RU', { maximumFractionDigits: 6 })} мм. Это условная граница ошибок точек и эталона.</span>}
+            <ul>{cycloidalModuleInference.warnings.map(warning => <li key={warning}>{warning}</li>)}</ul>
+          </> : <>
+            <strong>Модуль по фото пока не рассчитан</strong>
+            <ul>{cycloidalModuleInference.status === 'missing' ? cycloidalModuleInference.questions.map(question => <li key={question}>{question}</li>) : <li>{cycloidalModuleInference.reason}</li>}</ul>
+            <span>Можно продолжить с ручным модулем; ядро использует ha=m, а радиус производящей окружности нужно задать отдельно.</span>
+          </>}
+        </div>}
         {profile === 'cycloidal' && kind !== 'spur'
           ? <button className="inline-link" onClick={() => goStep(1)}><ArrowLeft size={14} /> Вернуться к выбору типа</button>
           : <button className="inline-link" onClick={() => profile === 'cycloidal'
-            ? onManual('cycloidal', confirmedCycloidalPhotoToothCount({ kind, teeth, confirmed: confirmedTeeth, source }) ?? undefined)
+            ? onManual('cycloidal', { toothCount: confirmedCycloidalPhotoToothCount({ kind, teeth, confirmed: confirmedTeeth, source }) ?? undefined,
+              moduleInference: cycloidalModuleInference, photoScaleEvidence: photoMeasurement ? { ...photoMeasurement, sourceImage: imageSize?.source } : undefined })
             : onManual()}>
-            {profile === 'cycloidal' ? 'Продолжить с циклоидальной моделью' : 'Выбрать геометрию вручную'} <ArrowRight size={14} />
+            {profile === 'cycloidal'
+              ? cycloidalModuleInference.status === 'ready'
+                ? `Перенести z=${teeth} и m=${cycloidalModuleInference.moduleMm.toLocaleString('ru-RU', { maximumFractionDigits: 3 })} мм`
+                : 'Продолжить к ручной настройке'
+              : 'Выбрать геометрию вручную'} <ArrowRight size={14} />
           </button>}
       </div>}
       {image && imageSize && supported && !rack && <PhotoScale key={`${imageSize.id}-${analysisRevision}-${kind}`} active={active && step === 2} image={image} width={imageSize.width} height={imageSize.height} internal={internal} isApplied={photoMeasurement !== null}
         onInvalidated={invalidatePhotoMeasurement} onMeasured={measurement => { onDraftChange(); invalidateSpan(); setPhotoMeasurement(measurement); setDiameter(String(measurement.result.diameterMm)); setDiameterMethod('tip_circle'); }} />}
-      <label className="check-row"><Checkbox checked={standard} onCheckedChange={v => editProfile(setStandard, v === true)} /><span>Подтверждены стандартная высота ha* = 1 и отсутствие укорочения или модификации вершин.</span></label>
-      {kind === 'spur' && <SpanMeasurementAssistant key={`${imageSize?.id ?? 'no-image'}-${analysisRevision}`} teeth={Number(teeth)} toolTipRadiusCoefficient={.3}
+      <label className="check-row"><Checkbox checked={standard} onCheckedChange={v => editProfile(setStandard, v === true)} /><span>{profile === 'cycloidal'
+        ? 'Подтверждена высота головки ha=m; вершины не укорочены и не модифицированы.'
+        : 'Подтверждены стандартная высота ha* = 1 и отсутствие укорочения или модификации вершин.'}</span></label>
+      {kind === 'spur' && profile === 'involute' && <SpanMeasurementAssistant key={`${imageSize?.id ?? 'no-image'}-${analysisRevision}`} teeth={Number(teeth)} toolTipRadiusCoefficient={.3}
         facts={{ teeth: typeReady, involute: profile === 'involute', standardTip: standard }}
         seed={{ ...(diameter !== '' ? { diameter: Number(diameter), diameterMethod: diameterMethod as SpanMeasurementInput['tipDiameterMethod'] } : {}), ...(alpha !== '' ? { pressureAngle: Number(alpha) } : {}) }}
         application={spanApplication} engaged={spanPath} onDraftChange={() => { onDraftChange(); setSpanApplication(null); setSpanPending(true); }}
@@ -285,15 +313,17 @@ export function PhotoWizard({ onApply, onManual, onManualFamily, onDraftChange, 
       {rack ? <p className="field-help">Измерьте расстояние вдоль перемещения рейки через несколько зубьев и разделите на число промежутков.</p> : <Choice active={active && step === 2 && !spanPath} id="diameter-method" label="Как определён диаметр вершин?" value={diameterMethod} onChange={v => { onDraftChange(); invalidateSpan(); setDiameterMethod(v); setPhotoMeasurement(null); }} options={{ unknown: 'Метод не подтверждён', tip_circle: 'Диаметр окружности восстановлен', opposed_tips: 'Между противоположными вершинами', uncorrected_caliper_span: 'Просто размер штангенциркулем' }} />}
       {!rack && <p className="field-help">{internal ? 'Нужна окружность вершин внутренних зубьев, не наружный размер кольца. ' : ''}При нечётном числе зубьев размер штангенциркулем не равен автоматически диаметру.</p>}
       {helical && <div className="photo-spaced"><Measure label="Угол β на делительной поверхности, °" value={beta} set={v => edit(setBeta, v)} placeholder="Например, −20" /><p className="field-help">Знак задаёт направление. Угол по фотографии без коррекции перспективы не подходит.</p></div>}
-      <div className="input-grid photo-inputs"><Measure label={helical ? 'Угол αₙ, °' : 'Угол α, °'} value={alpha} set={v => editProfile(setAlpha, v)} placeholder="Неизвестен" /><Measure label="Смещение xₙ" value={shift} set={v => editProfile(setShift, v)} placeholder="Неизвестно" /></div>
-      <p className="field-help">Введите подтверждённые значения. 20° и нулевое смещение не принимаются автоматически.</p>
+      {profile !== 'cycloidal' && <>
+        <div className="input-grid photo-inputs"><Measure label={helical ? 'Угол αₙ, °' : 'Угол α, °'} value={alpha} set={v => editProfile(setAlpha, v)} placeholder="Неизвестен" /><Measure label="Смещение xₙ" value={shift} set={v => editProfile(setShift, v)} placeholder="Неизвестно" /></div>
+        <p className="field-help">Введите подтверждённые значения. 20° и нулевое смещение не принимаются автоматически.</p>
+      </>}
       </div>
       {kind === 'herringbone' && <label className="check-row"><Checkbox checked={symmetric} onCheckedChange={v => edit(setSymmetric, v === true)} /><span>Половины шеврона равны, центральная канавка отсутствует.</span></label>}
       <Choice active={active && step === 2} id="measurement-source" label="Источник подтверждённых данных" value={source} onChange={v => edit(setSource, v as MeasurementSource)} options={{ user_confirmation: 'Проверены мной по детали / данным', measurement: 'Результаты измерений', drawing: 'Чертёж или документация' }} />
       {calculatedModule !== undefined && <div className="module-result"><span>Расчётный нормальный модуль</span><strong>{calculatedModule.toLocaleString('ru-RU', { maximumFractionDigits: 6 })} мм</strong><code>{spanPath ? 'm = [W(k+1) − Wk] / (π cos α)' : result.calculation?.formula}</code><p>{spanPath ? 'Из явно применённого решения по общей нормали. Смещение и утонение сохранены вместе с измерениями.' : 'Из подтверждённых размеров. Без округления до стандартного ряда.'}</p></div>}
-      {!spanPath && result.issues.map(issue => <p className="inline-error" key={issue.code}>{issue.message}</p>)}
-      {!spanPath && result.missingQuestions.length > 0 && <details className="expert-more"><summary>Что ещё уточнить ({result.missingQuestions.length})</summary>{result.missingQuestions.map(q => <div key={q.id}><strong>{q.label}</strong><p>{q.reason}</p></div>)}</details>}
-      {!scaleReady && <p className="field-help">{spanPath ? 'Рассчитайте и явно примените результат общей нормали или вернитесь в помощнике к прямому вводу. До этого перейти к построению нельзя.' : 'Неизвестный угол или профиль лучше уточнить по чертежу, данным ответной детали или измерениям. Помощник не подставляет их за вас.'}</p>}
+      {!spanPath && profile !== 'cycloidal' && result.issues.map(issue => <p className="inline-error" key={issue.code}>{issue.message}</p>)}
+      {!spanPath && profile !== 'cycloidal' && result.missingQuestions.length > 0 && <details className="expert-more"><summary>Что ещё уточнить ({result.missingQuestions.length})</summary>{result.missingQuestions.map(q => <div key={q.id}><strong>{q.label}</strong><p>{q.reason}</p></div>)}</details>}
+      {!scaleReady && profile !== 'cycloidal' && <p className="field-help">{spanPath ? 'Рассчитайте и явно примените результат общей нормали или вернитесь в помощнике к прямому вводу. До этого перейти к построению нельзя.' : 'Неизвестный угол или профиль лучше уточнить по чертежу, данным ответной детали или измерениям. Помощник не подставляет их за вас.'}</p>}
     </section>
     <section hidden={step !== 3} aria-label="Размеры тела и резюме">
       <p className="step-intro">Осталось измерить тело детали. После построения вы сможете повернуть модель и проверить размеры.</p>

@@ -4,6 +4,7 @@ import type { ExportPreset, ModelProvenance } from './modelExport.ts';
 import { spanApplicationMatches, type SpanApplication } from './spanMeasurement.ts';
 import { familyApplicationMatches, type FamilyApplication } from './familyIdentification.ts';
 import type { MeasurementSource } from './photo-inference.ts';
+import { cycloidalPhotoInferenceMatches, type CycloidalPhotoModuleInference } from './cycloidalPhotoInference.ts';
 
 export type JourneyStage = 'start' | 'input' | 'review' | 'delivery' | 'checkout';
 export type InputMode = 'manual' | 'photo';
@@ -20,6 +21,8 @@ export interface PhotoCycloidalHandoff {
   selectedPhotoKind: 'spur';
   selectedProfile: 'cycloidal';
   toothCountSeed: { value: number; source: MeasurementSource } | null;
+  moduleInference: CycloidalPhotoModuleInference | null;
+  photoScaleEvidence: unknown | null;
 }
 export interface JourneyState {
   stage: JourneyStage;
@@ -39,7 +42,7 @@ export interface JourneyState {
 }
 export type JourneyAction =
   | { type: 'choose-input'; mode: InputMode }
-  | { type: 'photo-to-manual-cycloidal'; toothCount?: { value: number; source: MeasurementSource } }
+  | { type: 'photo-to-manual-cycloidal'; toothCount?: { value: number; source: MeasurementSource }; moduleInference?: CycloidalPhotoModuleInference; photoScaleEvidence?: unknown }
   | { type: 'edit-manual'; params: ModelParams }
   | { type: 'select-manual-kind'; kind: ModelKind }
   | { type: 'edit-manual-family' }
@@ -92,11 +95,20 @@ export function transitionJourney(s: JourneyState, action: JourneyAction): Journ
     case 'photo-to-manual-cycloidal': {
       if (s.mode !== 'photo' || s.stage !== 'input') return s;
       const toothCountSeed = confirmedPhotoCountSeed(action.toothCount);
-      const manualDraft = { ...defaultModel('cycloidal'), ...(toothCountSeed ? { teeth: toothCountSeed.value } : {}) };
+      const offeredModule = action.moduleInference;
+      const moduleReady = offeredModule?.status === 'ready' && cycloidalPhotoInferenceMatches(offeredModule, toothCountSeed ?? undefined);
+      const moduleInference = offeredModule?.status === 'ready'
+        ? moduleReady ? offeredModule
+          : { status: 'rejected' as const, reason: 'Модульный расчёт не согласован с подтверждённым числом зубьев; задайте модуль вручную.' }
+        : offeredModule ?? null;
+      const moduleSeed = moduleInference?.status === 'ready' ? moduleInference.moduleMm : undefined;
+      const manualDraft = { ...defaultModel('cycloidal'), ...(toothCountSeed ? { teeth: toothCountSeed.value } : {}), ...(moduleSeed ? { module: moduleSeed } : {}) };
       const next = changed(s);
       return { ...next, mode: 'manual', manualDraft, manualSpan: null, manualSpanPending: false,
         manualFamily: null, manualFamilyPending: false, manualFamilyMethod: 'direct-list',
-        photoCycloidalHandoff: { method: 'confirmed-photo-cycloidal-handoff-v1', selectedPhotoKind: 'spur', selectedProfile: 'cycloidal', toothCountSeed } };
+        photoCycloidalHandoff: { method: 'confirmed-photo-cycloidal-handoff-v1', selectedPhotoKind: 'spur', selectedProfile: 'cycloidal', toothCountSeed,
+          moduleInference: moduleInference ? structuredClone(moduleInference) : null,
+          photoScaleEvidence: action.photoScaleEvidence === undefined ? null : structuredClone(action.photoScaleEvidence) } };
     }
     case 'edit-manual':
       if (s.mode !== 'manual' || sameParams(s.manualDraft, action.params)) return s;
@@ -143,18 +155,31 @@ export function transitionJourney(s: JourneyState, action: JourneyAction): Journ
         const photoHandoff = s.mode === 'manual' ? s.photoCycloidalHandoff : null;
         const countSeed = photoHandoff?.toothCountSeed ?? null;
         const countSeedUsed = !!countSeed && action.params.kind === 'cycloidal' && action.params.teeth === countSeed.value;
+        const moduleInference = photoHandoff?.moduleInference ?? null;
+        const moduleSeed = moduleInference?.status === 'ready' ? moduleInference : null;
+        const moduleSeedUsed = !!moduleSeed && action.params.kind === 'cycloidal'
+          && action.params.module === moduleSeed.moduleMm && action.params.teeth === moduleSeed.evidence.toothCount.value;
         const handoffOrigin = photoHandoff ? countSeed
           ? countSeedUsed
             ? ` Циклоидальный профиль и прямозубый тип выбраны в помощнике по фото; подтверждённое полное число зубьев z=${countSeed.value} перенесено (${countSeed.source}).`
             : ` В черновик из помощника по фото перенесено подтверждённое z=${countSeed.value} (${countSeed.source}), но построенная модель использует z=${action.params.teeth}; перенос не является источником текущего числа.`
           : ' Циклоидальный профиль выбран в помощнике по фото, но подтверждённое полное число зубьев не перенесено; число модели требует ручной проверки.' : '';
+        const moduleHandoffOrigin = photoHandoff ? moduleSeed
+          ? moduleSeedUsed
+            ? ` Модуль m=${moduleSeed.moduleMm} мм рассчитан по подтверждённым da=${moduleSeed.evidence.tipDiameterMm.value} мм и z=${moduleSeed.evidence.toothCount.value} формулой m=da/(z+2), при принятом ha=m.`
+            : ` Фото-помощник рассчитал m=${moduleSeed.moduleMm} мм при z=${moduleSeed.evidence.toothCount.value}, но текущая модель использует z=${action.params.teeth} и m=${action.params.module} мм; после изменения параметров модуль нужно сверить заново.`
+          : ` Модуль по фото не рассчитан: ${moduleInference?.status === 'missing' ? moduleInference.questions.join(' ') : moduleInference?.status === 'rejected' ? moduleInference.reason : 'неполные подтверждённые исходные данные'} Текущее значение модуля требует ручной проверки.` : '';
         const provenance = s.mode === 'manual' ? {
           origin: (s.manualSpan ? 'Общая нормаль: модуль, смещение и утонение рассчитаны по подтверждённым измерениям; тело задано вручную.' : action.origin)
-            + (s.manualFamily ? ' Семейство выбрано по ответам помощника; система профиля этим не подтверждена.' : '') + handoffOrigin,
+            + (s.manualFamily ? ' Семейство выбрано по ответам помощника; система профиля этим не подтверждена.' : '') + handoffOrigin + moduleHandoffOrigin,
           evidence: { ...(s.manualSpan ? { spanMeasurement: s.manualSpan, bodyDimensions: { widthMm: action.params.width, boreMm: action.params.bore, source: 'manual' } } : {}),
             familySelection: s.manualFamily ?? { method: s.manualFamilyMethod, source: 'manual', modelKind: action.params.kind },
-            ...(photoHandoff ? { photoCycloidalHandoff: { ...photoHandoff, toothCountSeedUsedInBuiltModel: countSeedUsed,
+            ...(photoHandoff ? { photoCycloidalHandoff: { ...structuredClone(photoHandoff), toothCountSeedUsedInBuiltModel: countSeedUsed,
+              moduleSeedUsedInBuiltModel: moduleSeedUsed,
               builtToothCount: action.params.kind === 'cycloidal' ? action.params.teeth : null,
+              builtModuleMm: action.params.kind === 'cycloidal' ? action.params.module : null,
+              moduleStatus: moduleSeed ? moduleSeedUsed ? 'derived-and-used' : 'derived-but-edited'
+                : moduleInference?.status === 'missing' ? 'not-derived-from-photo' : moduleInference?.status === 'rejected' ? 'photo-inference-rejected' : 'not-derived-from-photo',
               toothCountStatus: countSeed ? countSeedUsed ? 'transferred-and-used' : 'transferred-but-edited' : 'not-confirmed-in-photo-workflow' } } : {}) },
         } : action;
         const built: BuiltModel = { revision: s.revision, mode: s.mode,

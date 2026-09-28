@@ -1,5 +1,6 @@
 import { exportBinarySTL, validateMesh, type MeshQuality, type MeshValidation } from './gearMath.ts';
 import { buildModelMesh, modelDimensionsForReport, modelSpatialGeometryForReport, type ModelMesh, type ModelParams } from './model.ts';
+import { APP_VERSION } from './appVersion.ts';
 
 export type ExportPreset = 'standard' | 'pro';
 export const exportPresets: Record<ExportPreset, { title: string; detail: string; quality: MeshQuality }> = {
@@ -12,7 +13,7 @@ export interface ModelProvenance { origin: string; evidence: unknown }
 export function createModelPassport(mesh: ModelMesh, validation: MeshValidation, provenance: ModelProvenance,
   preset: ExportPreset | null = null) {
   return {
-    schema: 'zatseplenie.gear.v6', appVersion: '0.17.0', units: 'mm',
+    schema: 'zatseplenie.gear.v6', appVersion: APP_VERSION, units: 'mm',
     origin: provenance.origin, evidence: provenance.evidence, parameters: mesh.params,
     artifact: { purpose: preset ? 'STL-export' : 'current-preview-model', preset,
       requestedQuality: preset ? exportPresets[preset].quality : null,

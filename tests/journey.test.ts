@@ -7,6 +7,7 @@ import { analyzeSpanMeasurement, selectSpanApplication, type SpanMeasurementInpu
 import { createPrintBrief } from '../lib/printBrief.ts';
 import { defaultPrintSettings } from '../lib/printability.ts';
 import { selectFamilyApplication, type FamilyApplication } from '../lib/familyIdentification.ts';
+import { inferCycloidalPhotoModule } from '../lib/cycloidalPhotoInference.ts';
 
 const enter = () => transitionJourney(initialJourney(), { type: 'choose-input', mode: 'manual' });
 const build = (state = enter()) => transitionJourney(state, { type: 'build', params: state.manualDraft, origin: 'Задано вручную', evidence: null });
@@ -76,32 +77,50 @@ test('explicit cycloidal photo-profile route opens the matching manual model wit
   const built = transitionJourney(s, { type: 'build', params: s.manualDraft, origin: 'Параметры заданы вручную', evidence: null });
   assert.equal(built.stage, 'review'); assert.equal(built.built?.params.kind, 'cycloidal');
 });
-test('photo-to-cycloidal handoff seeds confirmed teeth and preserves their source through STL and print brief', () => {
+test('photo-to-cycloidal handoff seeds confirmed teeth and derived module with source through STL and print brief', () => {
+  const fact = <T>(value: T, source: 'measurement' | 'drawing' | 'user_confirmation' = 'measurement') => ({ value, source });
+  const inference = inferCycloidalPhotoModule({ kind: fact('spur', 'user_confirmation'), profileType: fact('cycloidal', 'drawing'),
+    toothCount: fact(36, 'user_confirmation'), tipDiameterMm: fact(76, 'measurement'), tipDiameterMethod: fact('tip_circle'), standardAddendum: fact(true, 'drawing') },
+  { kind: 'conditional_pixel_bound', pixelUncertaintyPx: 2, lowerDiameterMm: 75.8, upperDiameterMm: 76.2, maxRelativeDeviation: .003, includesReferenceTolerance: true });
+  assert.equal(inference.status, 'ready');
+  if (inference.status !== 'ready') throw Error('Expected cycloidal photo module inference');
   let s = transitionJourney(initialJourney(), { type: 'choose-input', mode: 'photo' });
   const startRevision = s.revision;
-  s = transitionJourney(s, { type: 'photo-to-manual-cycloidal', toothCount: { value: 36, source: 'drawing' } });
+  const photoScaleEvidence = { method: 'three-tip-circle-with-reference', sourceImage: { fileName: 'gear.png' }, diameterMm: 76 };
+  s = transitionJourney(s, { type: 'photo-to-manual-cycloidal', toothCount: { value: 36, source: 'user_confirmation' }, moduleInference: inference, photoScaleEvidence });
   assert.equal(s.revision, startRevision + 1); assert.equal(s.mode, 'manual'); assert.equal(s.stage, 'input');
-  assert.equal(s.manualDraft.kind, 'cycloidal'); assert.equal(s.manualDraft.teeth, 36); assert.equal(s.built, null);
-  assert.equal(s.photoCycloidalHandoff?.toothCountSeed?.source, 'drawing');
+  assert.equal(s.manualDraft.kind, 'cycloidal'); assert.equal(s.manualDraft.teeth, 36); assert.equal(s.manualDraft.module, 2); assert.equal(s.built, null);
+  assert.equal(s.photoCycloidalHandoff?.toothCountSeed?.source, 'user_confirmation');
   s = build(s);
-  assert.equal(s.stage, 'review'); assert.equal(s.built?.params.teeth, 36);
+  assert.equal(s.stage, 'review'); assert.equal(s.built?.params.teeth, 36); assert.equal(s.built?.params.module, 2);
   assert.match(s.built!.origin, /подтверждённое полное число зубьев z=36 перенесено/);
+  assert.match(s.built!.origin, /Модуль m=2 мм рассчитан по подтверждённым da=76 мм и z=36/);
   const passport = prepareModelExport(s.built!.params, 'standard', s.built!).passport;
-  const handoff = (passport.evidence as { photoCycloidalHandoff: { toothCountSeedUsedInBuiltModel: boolean; toothCountStatus: string; builtToothCount: number } }).photoCycloidalHandoff;
+  const handoff = (passport.evidence as { photoCycloidalHandoff: { toothCountSeedUsedInBuiltModel: boolean; toothCountStatus: string; builtToothCount: number;
+    moduleSeedUsedInBuiltModel: boolean; moduleStatus: string; builtModuleMm: number; photoScaleEvidence: unknown } }).photoCycloidalHandoff;
   assert.equal(handoff.toothCountSeedUsedInBuiltModel, true); assert.equal(handoff.toothCountStatus, 'transferred-and-used'); assert.equal(handoff.builtToothCount, 36);
+  assert.equal(handoff.moduleSeedUsedInBuiltModel, true); assert.equal(handoff.moduleStatus, 'derived-and-used'); assert.equal(handoff.builtModuleMm, 2);
+  assert.deepEqual(handoff.photoScaleEvidence, photoScaleEvidence);
   const brief = createPrintBrief(s.built!.mesh, s.built!.validation, defaultPrintSettings, s.built!);
-  assert.deepEqual(brief.evidence, passport.evidence); assert.equal(brief.parameters.teeth, 36);
+  assert.deepEqual(brief.evidence, passport.evidence); assert.equal(brief.parameters.teeth, 36); assert.equal(brief.parameters.module, 2);
 });
 test('manual tooth-count edits remain visible as changes to the photo seed in the model passport', () => {
+  const fact = <T>(value: T, source: 'measurement' | 'drawing' | 'user_confirmation' = 'measurement') => ({ value, source });
+  const inference = inferCycloidalPhotoModule({ kind: fact('spur', 'user_confirmation'), profileType: fact('cycloidal', 'drawing'),
+    toothCount: fact(36, 'user_confirmation'), tipDiameterMm: fact(76), tipDiameterMethod: fact('tip_circle'), standardAddendum: fact(true) });
+  if (inference.status !== 'ready') throw Error('Expected cycloidal photo module inference');
   let s = transitionJourney(initialJourney(), { type: 'choose-input', mode: 'photo' });
-  s = transitionJourney(s, { type: 'photo-to-manual-cycloidal', toothCount: { value: 36, source: 'measurement' } });
-  s = transitionJourney(s, { type: 'edit-manual', params: { ...s.manualDraft, teeth: 40 } });
+  s = transitionJourney(s, { type: 'photo-to-manual-cycloidal', toothCount: { value: 36, source: 'user_confirmation' }, moduleInference: inference });
+  s = transitionJourney(s, { type: 'edit-manual', params: { ...s.manualDraft, teeth: 40, module: 2.1 } });
   assert.equal(s.photoCycloidalHandoff?.toothCountSeed?.value, 36, 'the original observation stays available for provenance');
   s = build(s);
-  const handoff = (s.built!.evidence as { photoCycloidalHandoff: { toothCountSeedUsedInBuiltModel: boolean; toothCountStatus: string; builtToothCount: number } }).photoCycloidalHandoff;
-  assert.equal(s.built!.params.teeth, 40); assert.equal(handoff.toothCountSeedUsedInBuiltModel, false);
+  const handoff = (s.built!.evidence as { photoCycloidalHandoff: { toothCountSeedUsedInBuiltModel: boolean; toothCountStatus: string; builtToothCount: number;
+    moduleSeedUsedInBuiltModel: boolean; moduleStatus: string; builtModuleMm: number } }).photoCycloidalHandoff;
+  assert.equal(s.built!.params.teeth, 40); assert.equal(s.built!.params.module, 2.1); assert.equal(handoff.toothCountSeedUsedInBuiltModel, false);
   assert.equal(handoff.toothCountStatus, 'transferred-but-edited'); assert.equal(handoff.builtToothCount, 40);
+  assert.equal(handoff.moduleSeedUsedInBuiltModel, false); assert.equal(handoff.moduleStatus, 'derived-but-edited'); assert.equal(handoff.builtModuleMm, 2.1);
   assert.match(s.built!.origin, /перенесено подтверждённое z=36.*построенная модель использует z=40/);
+  assert.match(s.built!.origin, /Фото-помощник рассчитал m=2 мм при z=36.*текущая модель использует z=40 и m=2.1 мм/);
   s = transitionJourney(s, { type: 'select-manual-kind', kind: 'spur' });
   assert.equal(s.photoCycloidalHandoff, null, 'changing the model family clears the cycloidal photo handoff');
 });
@@ -111,8 +130,9 @@ test('missing or invalid photo counts never seed the cycloidal example value as 
   assert.equal(s.manualDraft.kind, 'cycloidal'); assert.equal(s.manualDraft.teeth, defaultModel('cycloidal').teeth);
   assert.equal(s.photoCycloidalHandoff?.toothCountSeed, null);
   s = transitionJourney(s, { type: 'build', params: s.manualDraft, origin: 'Параметры заданы вручную', evidence: null });
-  const handoff = (s.built!.evidence as { photoCycloidalHandoff: { toothCountSeedUsedInBuiltModel: boolean; toothCountStatus: string } }).photoCycloidalHandoff;
+  const handoff = (s.built!.evidence as { photoCycloidalHandoff: { toothCountSeedUsedInBuiltModel: boolean; toothCountStatus: string; moduleSeedUsedInBuiltModel: boolean; moduleStatus: string } }).photoCycloidalHandoff;
   assert.equal(handoff.toothCountSeedUsedInBuiltModel, false); assert.equal(handoff.toothCountStatus, 'not-confirmed-in-photo-workflow');
+  assert.equal(handoff.moduleSeedUsedInBuiltModel, false); assert.equal(handoff.moduleStatus, 'not-derived-from-photo');
   assert.match(s.built!.origin, /подтверждённое полное число зубьев не перенесено/);
 });
 test('checkout exports its captured model and quality; later changes cannot silently alter the artifact', () => {
@@ -176,7 +196,7 @@ test('fit checkout STL, passport and print brief share the selected representati
   const brief = createPrintBrief(model.mesh, model.validation, defaultPrintSettings, model, '2026-09-28T00:00:00.000Z');
   assert.deepEqual(brief.parameters, prepared.passport.parameters);
   assert.deepEqual(brief.evidence, prepared.passport.evidence); assert.equal(brief.origin, prepared.passport.origin);
-  assert.equal(brief.orderStatus, 'Файл задания. Заказ не отправлен.'); assert.equal(brief.appVersion, '0.17.0');
+  assert.equal(brief.orderStatus, 'Файл задания. Заказ не отправлен.'); assert.equal(brief.appVersion, '0.18.0');
   s = transitionJourney(s, { type: 'edit-manual-span' }); assert.equal(checkoutSnapshot(s), null);
   assert.equal(prepared.passport.parameters.module, application.candidate.parameters.module);
 });

@@ -1,6 +1,7 @@
 import { inferGearFromMeasurements, type InferenceField, type PhotoInferenceInput, type InferredGearKind, type TipDiameterMethod } from './photo-inference.ts';
 import type { SpanApplication } from './spanMeasurement.ts';
 import type { PhotoRegionEvidence } from './photo-region.ts';
+import { APP_VERSION } from './appVersion.ts';
 
 export type PhotoPlanSpan = { mode: 'direct' } | { mode: 'pending' } | { mode: 'applied'; application: SpanApplication };
 export interface PhotoClarificationContext {
@@ -179,7 +180,7 @@ export function buildPhotoClarificationPlan(context: PhotoClarificationContext):
 export function photoClarificationPlanMarkdown(plan: PhotoClarificationPlan): string {
   const text = (value: string) => value.replace(/\s+/g, ' ').replace(/[\\`*_{}\[\]<>#|]/g, '\\$&');
   return [
-    '# План уточнений для фото детали', '', 'Зацепление 0.17.0 · локальная памятка', '',
+    '# План уточнений для фото детали', '', `Зацепление ${APP_VERSION} · локальная памятка`, '',
     '## Следующее действие', '', text(plan.nextAction), '',
     '## Введено сейчас', '', ...plan.entered.map(value => `- ${text(value.label)}: ${text(value.value)}${value.note ? ` (${text(value.note)})` : ''}.`), '',
     'Введённое значение и указанный источник сами по себе не доказывают правильность измерения.', '',
