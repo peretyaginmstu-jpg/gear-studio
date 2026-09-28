@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react';
-import { Check, Download, FolderOpen, LoaderCircle, Plus, Upload, Copy, RefreshCw } from 'lucide-react';
+import { Check, Download, FolderOpen, LoaderCircle, Plus, Upload, Copy, RefreshCw, History } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { APP_VERSION } from '@/lib/appVersion';
 import { newProject, parseProject, projectFilename, restoreProjectJourney, serializeProject, snapshotJourney, MAX_PROJECT_BYTES, type ProjectDocument } from '@/lib/project';
@@ -8,6 +8,8 @@ import { listProjects, readProject, writeProject, storageErrorMessage, type Proj
 import type { JourneyState } from '@/lib/journey';
 import { downloadBlob } from '@/lib/download';
 import { ProjectContext, type ProjectDraftStore } from './ProjectContext';
+import { addProjectVersion, restoreProjectVersion, forkProjectVersion } from '@/lib/projectVersions';
+import { ProjectHistory } from './ProjectHistory';
 
 type LoadedProject = { document: ProjectDocument; revision: number | null; restored: boolean; notice?: string };
 export interface ProjectSession { initial: JourneyState | undefined; onJourney: (state: JourneyState) => void; controls: ReactNode; busy: boolean }
@@ -43,12 +45,14 @@ function ProjectEditor({ loaded, activate, component: Studio }: { loaded: Loaded
   const document = useRef(loaded.document), journey = useRef<JourneyState | null>(initial ?? null);
   const revision = useRef(loaded.revision), serial = useRef(1), savedSerial = useRef(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null), saving = useRef<Promise<boolean> | null>(null);
-  const failed = useRef(false), alive = useRef(true);
+  const failed = useRef(false), failureMessage = useRef<string | null>(null), alive = useRef(true);
   const [name, setName] = useState(loaded.document.name), [status, setStatus] = useState<'saving' | 'saved' | 'error'>('saving');
   const [error, setError] = useState<string | null>(null), [notice, setNotice] = useState(loaded.notice ?? (loaded.restored
     ? initial?.built ? 'Проект восстановлен на этом устройстве. Сохранённая модель пересчитана; проверьте её перед получением файлов.'
       : 'Черновик восстановлен на этом устройстве. Продолжите ввод с сохранёнными фото, измерениями и ответами.' : null));
   const [libraryOpen, setLibraryOpen] = useState(false), [entries, setEntries] = useState<Omit<ProjectEntry, 'contents'>[]>([]);
+  const [search, setSearch] = useState('');
+  const [historyDocument, setHistoryDocument] = useState<ProjectDocument | null>(null), [historyError, setHistoryError] = useState<string | null>(null);
   const [actionBusy, setActionBusy] = useState(false), [inputBusy, setInputBusy] = useState(false);
   const busy = actionBusy || inputBusy;
   const fileInput = useRef<HTMLInputElement>(null);
@@ -67,11 +71,13 @@ function ProjectEditor({ loaded, activate, component: Studio }: { loaded: Loaded
           document.current.updatedAt = next.updatedAt;
           savedSerial.current = version;
         }
+        failureMessage.current = null;
         if (alive.current) { setStatus('saved'); setError(null); }
         return true;
       } catch (error) {
         failed.current = true;
-        if (alive.current) { setStatus('error'); setError(storageErrorMessage(error)); }
+        failureMessage.current = storageErrorMessage(error);
+        if (alive.current) { setStatus('error'); setError(failureMessage.current); }
         return false;
       }
     })();
@@ -115,18 +121,31 @@ function ProjectEditor({ loaded, activate, component: Studio }: { loaded: Loaded
     return () => { alive.current = false; if (timer.current) clearTimeout(timer.current); window.removeEventListener('beforeunload', protectUnsaved); window.document.removeEventListener('visibilitychange', background); };
   }, [flush]);
 
-  const run = async (task: () => Promise<void>) => {
-    if (busy) return;
+  const run = async (task: () => Promise<void>, report: (message: string | null) => void = setNotice): Promise<boolean> => {
+    if (busy) return false;
     setActionBusy(true);
-    try { await task(); } catch (error) { setNotice(error instanceof Error ? error.message : 'Не удалось выполнить действие. Текущий проект сохранён во вкладке.'); }
+    try { await task(); return true; } catch (error) { report(error instanceof Error ? error.message : 'Не удалось выполнить действие. Текущий проект сохранён во вкладке.'); return false; }
     finally { if (alive.current) setActionBusy(false); }
   };
   const exportProject = () => {
-    const current = snapshot(), contents = serializeProject(current);
     // Validate our own portable file as well as imports; never label a broken snapshot a backup.
-    try { parseProject(contents); downloadBlob(contents, 'application/json', projectFilename(current.name)); setNotice('Файл проекта подготовлен к скачиванию вместе с фото и измерениями. Проверьте загрузки браузера.'); }
+    try { const current = snapshot(), contents = serializeProject(current); parseProject(contents); downloadBlob(contents, 'application/json', projectFilename(current.name)); setNotice('Файл проекта подготовлен к скачиванию вместе с фото, измерениями и историей версий. Проверьте загрузки браузера.'); }
     catch (error) { setNotice(error instanceof Error ? error.message : 'Не удалось подготовить файл проекта.'); }
   };
+  const changeHistory = (versionId?: string, versionName = '', versionNote = '') => run(async () => {
+    setHistoryError(null);
+    if (!await flush()) throw new Error(failureMessage.current ?? 'Не удалось сохранить текущую работу. Закройте историю и устраните ошибку сохранения или создайте отдельный проект.');
+    const next = versionId ? restoreProjectVersion(snapshot(), versionId) : addProjectVersion(snapshot(), versionName, versionNote);
+    // Validate before the atomic write; history failure cannot partially replace the working state.
+    parseProject(serializeProject(next));
+    const nextRevision = await writeProject(next, revision.current);
+    if (versionId) activate({ document: next, revision: nextRevision, restored: true,
+      notice: `Версия восстановлена. Предыдущая работа сохранена в истории. ${next.journey.built ? 'Проверьте модель перед получением файлов.' : 'Продолжите ввод исходных данных.'}` });
+    else {
+      document.current = next; revision.current = nextRevision; setHistoryDocument(next);
+      setNotice(`Версия «${versionName.trim()}» сохранена вместе с исходными данными.`);
+    }
+  }, setHistoryError);
   const importProject = (file?: File) => {
     if (!file) return;
     void run(async () => {
@@ -147,7 +166,8 @@ function ProjectEditor({ loaded, activate, component: Studio }: { loaded: Loaded
       <span className={`project-save-state ${status}`} role="status">{status === 'saved' ? <Check size={15} /> : status === 'saving' ? <LoaderCircle size={15} className="project-spinner" /> : null}
         {inputBusy ? 'Обрабатываем фото…' : status === 'saved' ? 'Сохранено на устройстве' : status === 'saving' ? 'Сохраняем…' : 'Не сохранено'}</span>
       <div className="project-tools">
-        <button type="button" className="text-button" disabled={busy} onClick={() => { void run(async () => { const result = await listProjects(); setEntries(result.entries); setLibraryOpen(true); }); }}><FolderOpen size={17} /> Мои проекты</button>
+        <button type="button" className="text-button" disabled={busy} onClick={() => { void run(async () => { const result = await listProjects(); setEntries(result.entries); setSearch(''); setLibraryOpen(true); }); }}><FolderOpen size={17} /> Мои проекты</button>
+        <button type="button" className="text-button" disabled={busy} onClick={() => { setHistoryDocument(snapshot()); setHistoryError(null); }}><History size={17} /> Версии</button>
         <button type="button" className="text-button" disabled={busy} onClick={exportProject}><Download size={17} /> Скачать проект</button>
         <button type="button" className="text-button" disabled={busy} onClick={() => fileInput.current?.click()}><Upload size={17} /> Открыть файл</button>
         <button type="button" className="text-button" disabled={busy} onClick={() => { void run(async () => { if (await flush()) activate({ document: newProject(), revision: null, restored: false }); }); }}><Plus size={17} /> Новый</button>
@@ -164,13 +184,25 @@ function ProjectEditor({ loaded, activate, component: Studio }: { loaded: Loaded
     {notice && <div className="project-notice" role="status"><p>{notice}</p><button type="button" className="text-button" aria-label="Закрыть сообщение о проекте" onClick={() => setNotice(null)}>Понятно</button></div>}
     <Dialog open={libraryOpen} onOpenChange={setLibraryOpen}><DialogContent className="project-library">
       <DialogTitle>Мои проекты</DialogTitle><DialogDescription>Сохраняются в этом браузере. Для переноса на другое устройство и резервной копии скачайте файл проекта. Очистка данных сайта удалит локальные записи.</DialogDescription>
-      <ul>{entries.map(entry => <li key={entry.id}><div><strong>{entry.name}</strong><span>{new Date(entry.updatedAt).toLocaleString('ru-RU')}{entry.id === loaded.document.id ? ' · открыт сейчас' : ''}</span></div>
+      <label className="project-search">Найти проект<input type="search" aria-label="Найти проект" value={search} onChange={event => setSearch(event.target.value)} placeholder="Название детали или заказа" /></label>
+      <ul>{entries.filter(entry => entry.name.toLocaleLowerCase('ru-RU').includes(search.trim().toLocaleLowerCase('ru-RU'))).map(entry => <li key={entry.id}><div><strong>{entry.name}</strong><span>{new Date(entry.updatedAt).toLocaleString('ru-RU')}{entry.id === loaded.document.id ? ' · открыт сейчас' : ''}</span></div>
         <button className="secondary-button" disabled={busy || entry.id === loaded.document.id} onClick={() => { void run(async () => {
           if (!await flush()) return;
           const next = await readProject(entry.id); activate({ document: next.project, revision: next.revision, restored: true });
         }); }}>Открыть</button></li>)}</ul>
       {!entries.length && <p>Первый проект появится здесь после автосохранения.</p>}
+      {!!entries.length && !entries.some(entry => entry.name.toLocaleLowerCase('ru-RU').includes(search.trim().toLocaleLowerCase('ru-RU'))) && <p role="status">По этому названию проектов нет.</p>}
     </DialogContent></Dialog>
+    {historyDocument && <ProjectHistory project={historyDocument} busy={busy} error={historyError} onClose={() => setHistoryDocument(null)}
+      onSave={(name, note) => changeHistory(undefined, name, note)} onRestore={id => { void changeHistory(id); }}
+      onFork={versionId => { void run(async () => {
+        // A copy also rescues a draft when the original cannot be written because of another tab.
+        await flush();
+        const copy = forkProjectVersion(snapshot(), versionId);
+        const nextRevision = await writeProject(copy, null);
+        activate({ document: copy, revision: nextRevision, restored: true,
+          notice: 'Создан отдельный проект из выбранного варианта. История версий осталась в исходном проекте.' });
+      }, setHistoryError); }} />}
   </section>;
   return <ProjectContext.Provider value={drafts}><Studio project={{ initial, onJourney, controls, busy }} /></ProjectContext.Provider>;
 }

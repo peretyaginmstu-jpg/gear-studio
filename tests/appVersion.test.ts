@@ -12,6 +12,6 @@ test('app version, README, and current product documents stay aligned', () => {
   assert.equal(lockFile.version, packageVersion);
   assert.equal(lockFile.packages[''].version, packageVersion);
   assert.ok(read('../README.md').includes(`Версия приложения: **${packageVersion}**`));
-  for (const path of ['../docs/user-journey.md', '../docs/product-packages.md', '../docs/photo-draft-qa.md'])
+  for (const path of ['../docs/user-journey.md', '../docs/product-packages.md', '../docs/photo-draft-qa.md', '../docs/projects.md', '../docs/project-versions-qa.md'])
     assert.ok(read(path).includes(`v${packageVersion}`), `${path} must identify release v${packageVersion}`);
 });

@@ -1,4 +1,4 @@
-import { parseProject, serializeProject, type ProjectDocument } from './project.ts';
+import { parseProject, serializeProject, ProjectSizeError, type ProjectDocument } from './project.ts';
 
 const DATABASE = 'zatseplenie-projects';
 export interface ProjectEntry { id: string; name: string; updatedAt: string; revision: number; contents: string }
@@ -58,6 +58,7 @@ export async function writeProject(project: ProjectDocument, expectedRevision: n
 }
 
 export function storageErrorMessage(error: unknown): string {
+  if (error instanceof ProjectSizeError) return error.message;
   if (error instanceof ProjectConflictError) return error.message;
   if (error instanceof DOMException && error.name === 'QuotaExceededError')
     return 'Место в браузере закончилось. Скачайте файл проекта, чтобы сохранить изменения.';

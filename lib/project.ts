@@ -8,8 +8,13 @@ import { analyzeSpanMeasurement, selectSpanApplication } from './spanMeasurement
 import { estimatePhotoCircle, photoScaleSources } from './photo-scale.ts';
 import { cycloidalPhotoInferenceMatches, type CycloidalPhotoModuleInference } from './cycloidalPhotoInference.ts';
 
-export const PROJECT_SCHEMA = 'zatseplenie.project.v1';
+export const PROJECT_SCHEMA = 'zatseplenie.project.v2';
+export const LEGACY_PROJECT_SCHEMA = 'zatseplenie.project.v1';
 export const MAX_PROJECT_BYTES = 32 * 1024 * 1024;
+export const MAX_PROJECT_VERSIONS = 100;
+export class ProjectSizeError extends Error {
+  constructor() { super('Проект больше 32 МБ. Откройте «Версии» и создайте отдельный проект из текущего варианта.'); }
+}
 const finite = z.number().finite();
 // An empty numeric control is NaN in memory, null on disk, and empty on restore.
 const draftNumber = finite.nullable().transform(value => value ?? NaN);
@@ -113,6 +118,15 @@ const savedJourney = z.object({
   built: z.object({ revision: finite.int().nonnegative(), mode, params: modelSchema, origin: z.string().max(12000), evidence: z.unknown() }).nullable(),
 }).strict();
 export type SavedJourney = z.infer<typeof savedJourney>;
+export interface ProjectSnapshot { journey: SavedJourney; forms: ProjectForms }
+export interface ProjectVersion extends ProjectSnapshot {
+  id: string;
+  name: string;
+  note: string;
+  createdAt: string;
+  appVersion: string;
+  reason: 'named' | 'before-restore';
+}
 export interface ProjectDocument {
   schema: typeof PROJECT_SCHEMA;
   appVersion: string;
@@ -122,15 +136,22 @@ export interface ProjectDocument {
   updatedAt: string;
   journey: SavedJourney;
   forms: ProjectForms;
+  versions: ProjectVersion[];
 }
+const formsSchema = z.record(z.object({ identity: z.string().max(4000), values: z.record(z.unknown()) }).strict());
+const versionSchema = z.object({ id: z.string().uuid(), name: z.string().trim().min(1).max(120), note: z.string().max(1000),
+  createdAt: z.string().datetime(), appVersion: z.string().max(30), reason: z.enum(['named', 'before-restore']),
+  journey: savedJourney, forms: formsSchema,
+}).strict();
 const documentSchema = z.object({ schema: z.literal(PROJECT_SCHEMA), appVersion: z.string().max(30), id: z.string().uuid(),
   name: z.string().trim().min(1).max(120), createdAt: z.string().datetime(), updatedAt: z.string().datetime(),
-  journey: savedJourney, forms: z.record(z.object({ identity: z.string().max(4000), values: z.record(z.unknown()) }).strict()),
+  journey: savedJourney, forms: formsSchema, versions: z.array(versionSchema).max(MAX_PROJECT_VERSIONS),
+  assets: z.record(z.string().max(24 * 1024 * 1024).regex(/^data:image\/png;base64,[A-Za-z0-9+/]+=*$/)),
 }).strict();
 
 /** Bound recursion and reject special object keys before any data enters application state. */
 function inspectJson(value: unknown, depth = 0, counter = { count: 0 }): void {
-  if (++counter.count > 100_000 || depth > 30) throw new Error('Слишком сложный файл проекта.');
+  if (++counter.count > 300_000 || depth > 30) throw new Error('Слишком сложный файл проекта.');
   if (typeof value === 'number' && !Number.isFinite(value)) throw new Error('Нечисловое значение в файле проекта.');
   if (!value || typeof value !== 'object') return;
   for (const [key, child] of Object.entries(value)) {
@@ -140,20 +161,37 @@ function inspectJson(value: unknown, depth = 0, counter = { count: 0 }): void {
 }
 
 export function parseProject(contents: string): ProjectDocument {
-  if (contents.length > MAX_PROJECT_BYTES) throw new Error('Проект больше 32 МБ.');
+  if (new TextEncoder().encode(contents).byteLength > MAX_PROJECT_BYTES) throw new ProjectSizeError();
   let raw: unknown;
   try { raw = JSON.parse(contents); } catch { throw new Error('Файл не является JSON-проектом «Зацепления».'); }
   inspectJson(raw);
-  if (!raw || typeof raw !== 'object' || (raw as { schema?: string }).schema !== PROJECT_SCHEMA)
+  if (!raw || typeof raw !== 'object' || ![PROJECT_SCHEMA, LEGACY_PROJECT_SCHEMA].includes((raw as { schema: string }).schema))
     throw new Error('Неизвестный формат проекта. Нужен файл .gear.json; STL и паспорт не являются файлом проекта.');
+  if ((raw as { schema: string }).schema === LEGACY_PROJECT_SCHEMA) {
+    // Only the original v1 shape can migrate; never silently discard unexpected history.
+    if ('versions' in raw || 'assets' in raw) throw new Error('Несогласованная версия формата проекта.');
+    raw = { ...raw, schema: PROJECT_SCHEMA, versions: [], assets: {} };
+  }
   const parsed = documentSchema.safeParse(raw);
   if (!parsed.success) throw new Error(`Не удалось прочитать проект: проверьте поле ${parsed.error.issues[0]?.path.join('.') || 'данных'}.`);
-  const doc = parsed.data;
+  const { assets, ...doc } = parsed.data;
+  if (Object.keys(assets).length > MAX_PROJECT_VERSIONS + 1) throw new Error('Слишком много фотографий в проекте.');
+  if (new Set(doc.versions.map(version => version.id)).size !== doc.versions.length) throw new Error('Повторяющиеся идентификаторы версий.');
+  return { ...doc, forms: parseForms(doc.forms, assets), versions: doc.versions.map(version => ({ ...version, forms: parseForms(version.forms, assets) })) };
+}
+
+function parseForms(saved: ProjectForms, assets: Record<string, string>): ProjectForms {
   const forms: ProjectForms = {};
-  for (const [key, form] of Object.entries(doc.forms)) {
+  for (const [key, form] of Object.entries(saved)) {
     const schema = formSchemas[key];
     if (!schema) throw new Error(`Неизвестный раздел проекта: ${key}. Обновите приложение.`);
-    const result = schema.safeParse(form.values);
+    let values = form.values;
+    if (key === 'photo' && values.image && typeof values.image === 'object') {
+      const ref = z.object({ asset: z.string().regex(/^photo-\d+$/) }).strict().safeParse(values.image);
+      if (!ref.success || !Object.hasOwn(assets, ref.data.asset)) throw new Error('Не найдена фотография сохранённой версии.');
+      values = { ...values, image: assets[ref.data.asset] };
+    }
+    const result = schema.safeParse(values);
     if (!result.success) throw new Error(`Повреждены данные раздела ${key}. Исходный проект не изменён.`);
     forms[key] = { identity: form.identity, values: result.data };
   }
@@ -170,7 +208,7 @@ export function parseProject(contents: string): ProjectDocument {
     if (photo.region && (photo.region.x + photo.region.width > photo.imageSize.width || photo.region.y + photo.region.height > photo.imageSize.height))
       throw new Error('Область детали выходит за фотографию.');
   }
-  return { ...doc, forms };
+  return forms;
 }
 
 export function snapshotJourney(state: JourneyState): SavedJourney {
@@ -180,7 +218,7 @@ export function snapshotJourney(state: JourneyState): SavedJourney {
 }
 
 export function newProject(id = crypto.randomUUID(), date = new Date().toISOString()): ProjectDocument {
-  return { schema: PROJECT_SCHEMA, appVersion: APP_VERSION, id, name: 'Новая деталь', createdAt: date, updatedAt: date, journey: snapshotJourney(initialJourney()), forms: {} };
+  return { schema: PROJECT_SCHEMA, appVersion: APP_VERSION, id, name: 'Новая деталь', createdAt: date, updatedAt: date, journey: snapshotJourney(initialJourney()), forms: {}, versions: [] };
 }
 
 /** Rebuild geometry with the current kernel. Saved checks and commercial choices are never imported as approval. */
@@ -201,5 +239,19 @@ export function restoreProjectJourney(project: ProjectDocument): JourneyState {
   return state;
 }
 
-export const serializeProject = (project: ProjectDocument): string => JSON.stringify(project, null, 2);
+/** The file stores each photo once, while editable snapshots keep ordinary image strings in memory. */
+export function serializeProject(project: ProjectDocument): string {
+  const assets: Record<string, string> = {}, images = new Map<string, string>();
+  const packForms = (forms: ProjectForms): ProjectForms => {
+    const image = forms.photo?.values.image;
+    if (typeof image !== 'string' || !image.startsWith('data:image/png;base64,')) return forms;
+    let key = images.get(image);
+    if (!key) { key = `photo-${images.size + 1}`; images.set(image, key); assets[key] = image; }
+    return { ...forms, photo: { ...forms.photo, values: { ...forms.photo.values, image: { asset: key } } } };
+  };
+  const contents = JSON.stringify({ ...project, forms: packForms(project.forms),
+    versions: project.versions.map(version => ({ ...version, forms: packForms(version.forms) })), assets }, null, 2);
+  if (new TextEncoder().encode(contents).byteLength > MAX_PROJECT_BYTES) throw new ProjectSizeError();
+  return contents;
+}
 export const projectFilename = (name: string): string => `${name.replace(/[^\p{L}\p{N}._ -]/gu, '').trim().slice(0, 80) || 'gear-project'}.gear.json`;
