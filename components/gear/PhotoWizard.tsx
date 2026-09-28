@@ -3,7 +3,7 @@ import { useMemo, useRef, useState } from 'react';
 import { Camera, Upload, ScanLine, Check, ArrowRight, ArrowLeft } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { analyzeGearImage, type PhotoAnalysis } from '@/lib/photo-analysis';
+import type { ImageDataLike, PhotoAnalysis } from '@/lib/photo-analysis';
 import { inferGearFromMeasurements, type InferredGearKind, type MeasurementSource, type TipDiameterMethod, type PhotoInferenceInput } from '@/lib/photo-inference';
 import { buildModelMesh, defaultModel, isRackKind, isInternalKind, isHelicalKind, modelNames, type ModelParams } from '@/lib/model';
 import { PhotoScale, type PhotoScaleMeasurement } from './PhotoScale';
@@ -14,6 +14,8 @@ import { SpanMeasurementAssistant } from './SpanMeasurementAssistant';
 import type { SpanApplication, SpanMeasurementInput } from '@/lib/spanMeasurement';
 import { FamilyAssistant } from './FamilyAssistant';
 import { familyApplicationMatches, type FamilyApplication } from '@/lib/familyIdentification';
+import { analyzeGearRegion, samePhotoRegion, normalizePhotoRegion, type PhotoRegion, type PhotoRegionEvidence } from '@/lib/photo-region';
+import { PhotoRegionDialog } from './PhotoRegionDialog';
 
 type ApplyParams = Partial<ModelParams> & { kind: InferredGearKind };
 const inferredKinds: InferredGearKind[] = ['spur', 'helical', 'herringbone', 'internal', 'internal-helical', 'rack', 'helical-rack'];
@@ -24,6 +26,9 @@ export function PhotoWizard({ onApply, onManual, onManualFamily, onDraftChange, 
   const edit = <T,>(setter: (value: T) => void, value: T) => { onDraftChange(); setter(value); };
   const fileInput = useRef<HTMLInputElement>(null), request = useRef(0);
   const [image, setImage] = useState<string | null>(null), [analysis, setAnalysis] = useState<PhotoAnalysis | null>(null);
+  const pixels = useRef<ImageDataLike | null>(null);
+  const [region, setRegion] = useState<PhotoRegion | null>(null), [analysisEvidence, setAnalysisEvidence] = useState<PhotoRegionEvidence | null>(null);
+  const [analysisRevision, setAnalysisRevision] = useState(0);
   const [imageSize, setImageSize] = useState<{ width: number; height: number; id: number; source: { fileName: string; mimeType: string; originalWidth: number; originalHeight: number } } | null>(null);
   const [photoMeasurement, setPhotoMeasurement] = useState<PhotoScaleMeasurement | null>(null);
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
@@ -66,11 +71,31 @@ export function PhotoWizard({ onApply, onManual, onManualFamily, onDraftChange, 
     setSpanApplication(null); setSpanPending(false);
     setFamilyApplication(null); setFamilyPending(false);
   };
+  const runAnalysis = async (input: ImageDataLike, selected: PhotoRegion | null, id: number) => {
+    // Allow loading feedback to paint; a later file/region request owns the result.
+    await new Promise(resolve => setTimeout(resolve, 20));
+    if (id !== request.current) return;
+    const result = analyzeGearRegion(input, selected);
+    if (id !== request.current) return;
+    setAnalysis(result.analysis); setAnalysisEvidence(result.evidence);
+    if (result.analysis.toothCount) setTeeth(String(result.analysis.toothCount));
+  };
+  const applyRegion = async (selected: PhotoRegion | null) => {
+    const input = pixels.current;
+    if (!input || samePhotoRegion(region, selected, input)) return;
+    const next = normalizePhotoRegion(selected, input), id = ++request.current;
+    onDraftChange(); resetAnswers(); setAnalysisRevision(value => value + 1);
+    setRegion(next); setAnalysis(null); setAnalysisEvidence(null); setError(''); setBusy(true);
+    try { await runAnalysis(input, next, id); }
+    catch (e) { if (id === request.current) setError(e instanceof Error ? e.message : 'Не удалось проанализировать область.'); }
+    finally { if (id === request.current) setBusy(false); }
+  };
   const loadFile = async (file?: File) => {
     if (!file) return;
     onDraftChange(); setStep(0);
     const id = ++request.current;
-    setBusy(false); setError(''); setAnalysis(null); setImage(null); setImageSize(null); resetAnswers();
+    setBusy(false); setError(''); setAnalysis(null); setAnalysisEvidence(null); setRegion(null); pixels.current = null;
+    setAnalysisRevision(value => value + 1); setImage(null); setImageSize(null); resetAnswers();
     if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) { setError('Подойдут JPG, PNG или WebP. HEIC сначала сохраните в JPEG.'); return; }
     if (file.size > 20 * 1024 * 1024) { setError('Файл больше 20 МБ. Уменьшите изображение.'); return; }
     setBusy(true);
@@ -87,10 +112,8 @@ export function PhotoWizard({ onApply, onManual, onManualFamily, onDraftChange, 
       if (id !== request.current) return;
       setImageSize({ width: canvas.width, height: canvas.height, id, source: sourceImage });
       setImage(canvas.toDataURL('image/png'));
-      await new Promise(resolve => setTimeout(resolve, 20));
-      const result = analyzeGearImage(ctx.getImageData(0, 0, canvas.width, canvas.height));
-      if (id !== request.current) return;
-      setAnalysis(result); if (result.toothCount) setTeeth(String(result.toothCount));
+      const input = ctx.getImageData(0, 0, canvas.width, canvas.height); pixels.current = input;
+      await runAnalysis(input, null, id);
     } catch (e) { if (id === request.current) setError(e instanceof Error ? e.message : 'Не удалось открыть файл.'); }
     finally { if (id === request.current) setBusy(false); }
   };
@@ -129,7 +152,7 @@ export function PhotoWizard({ onApply, onManual, onManualFamily, onDraftChange, 
   const profileParameters = spanPath ? spanApplication?.candidate.parameters ?? null : result.status === 'ready' ? result.parameters : null;
   const calculatedModule = spanPath ? spanApplication?.candidate.parameters.module : result.calculation?.normalModuleMm;
   const bodyValid = width !== '' && Number(width) > 0 && body !== '' && (rack || internal ? Number(body) > 0 : Number(body) >= 0);
-  const ready = familyReady && supported && profileParameters !== null && bodyValid && confirmedTeeth && teeth !== '' && (kind !== 'herringbone' || symmetric);
+  const ready = !busy && !!analysis && familyReady && supported && profileParameters !== null && bodyValid && confirmedTeeth && teeth !== '' && (kind !== 'herringbone' || symmetric);
   const apply = () => {
     if (!ready || !profileParameters) return;
     const patch: ApplyParams = { ...profileParameters, teeth: Number(teeth), width: Number(width), backlash: spanPath ? spanApplication!.candidate.parameters.backlash : 0,
@@ -148,6 +171,7 @@ export function PhotoWizard({ onApply, onManual, onManualFamily, onDraftChange, 
           ...(spanPath ? { rawDiameterEqualsSpanReading: photoMeasurement.result.diameterMm === spanApplication!.input.tipDiameterMm } : {}) } } : {}),
         ...(analysis ? { photoAnalysisEvidence: {
           algorithm: analysis.diagnostics.algorithm, status: analysis.status, sourceImage: imageSize?.source,
+          analysisRegion: analysisEvidence,
           workingImage: imageSize ? { width: imageSize.width, height: imageSize.height } : null,
           coordinateSystem: 'working_image_pixels; origin=top-left; angle=clockwise-from-right',
           centerPx: analysis.centerPx, outsideDiameterPx: analysis.outsideDiameterPx,
@@ -165,7 +189,7 @@ export function PhotoWizard({ onApply, onManual, onManualFamily, onDraftChange, 
       requestAnimationFrame(() => { stepHeading.current?.focus({ preventScroll: true }); stepHeading.current?.scrollIntoView({ block: 'start' }); });
     }
   };
-  const typeReady = familyReady && supported && confirmedTeeth && Number.isInteger(Number(teeth)) && Number(teeth) >= (rack ? 1 : 6) && Number(teeth) <= 250;
+  const typeReady = !busy && !!analysis && familyReady && supported && confirmedTeeth && Number.isInteger(Number(teeth)) && Number(teeth) >= (rack ? 1 : 6) && Number(teeth) <= 250;
   const scaleReady = familyReady && profileParameters !== null && (kind !== 'herringbone' || symmetric);
   const canContinue = step === 0 ? !!image && !!analysis && !busy : step === 1 ? typeReady : scaleReady;
   const stepTitles = ['Добавьте фото детали', 'Уточните тип и число зубьев', 'Подтвердите масштаб и профиль', 'Размеры тела и построение'];
@@ -179,12 +203,15 @@ export function PhotoWizard({ onApply, onManual, onManualFamily, onDraftChange, 
         {image ? <img src={image} alt="Загруженный образец для анализа контура" /> : <><Camera size={27} /><strong>Добавьте фото колеса</strong><span>Перетащите сюда или выберите файл</span></>}
         <span className="upload-caption"><Upload size={14} />{image ? 'Заменить фото' : 'JPG, PNG, WebP · до 20 МБ'}</span>
       </button>
+      {image && imageSize && <PhotoRegionDialog key={imageSize.id} active={active && step === 0} busy={busy} image={image} width={imageSize.width} height={imageSize.height} region={region} onApply={next => { void applyRegion(next); }} />}
       <ul className="photo-hints"><li>Снимите торец строго сверху на однотонном фоне.</li><li>Для измерения по фото положите рядом эталон известного размера в плоскости торца.</li><li>Фото останется на устройстве. Размеры и профиль подтвердим дальше.</li></ul>
       {busy && <p className="inline-status" role="status">Анализируем контур…</p>}
       {analysis && <p className="inline-status" role="status"><Check size={17} /> Фото прочитано. Дальше проверим тип детали и зубья.</p>}
     </section>
     <section hidden={step !== 1} aria-label="Тип и число зубьев">
       <p className="step-intro">Контур даёт подсказку. Сверьте её с самой деталью, особенно если часть зубьев сломана.</p>
+      {busy && <p className="inline-status" role="status">Анализируем выбранную область…</p>}
+      {image && imageSize && <PhotoRegionDialog key={imageSize.id} active={active && step === 1} busy={busy} image={image} width={imageSize.width} height={imageSize.height} region={region} onApply={next => { void applyRegion(next); }} />}
     {analysis && <div className="photo-result"><span className="photo-result-title"><ScanLine size={17} />{analysis.damageHypothesis ? 'Гипотеза при локальном повреждении' : analysis.toothCount ? 'Найдена периодичность контура' : 'Нужно уточнение'}</span>
       {analysis.toothCount && <strong>{analysis.toothCount}<small> предполагаемых зубьев</small></strong>}
       {analysis.damageHypothesis && <>
@@ -200,7 +227,7 @@ export function PhotoWizard({ onApply, onManual, onManualFamily, onDraftChange, 
       <details><summary>Что удалось определить</summary>{analysis.damageHypothesis && <p>Разброс шага: {(100 * analysis.damageHypothesis.pitchScatterFraction).toFixed(2)}%; ошибка шаблона на сохранных участках: {(100 * analysis.damageHypothesis.templateErrorFraction).toFixed(1)}% его высоты. Это не допуск детали и не вероятность.</p>}<ul>{[...analysis.warnings, ...(analysis.damageHypothesis?.evidence ?? [])].map((w, i) => <li key={i}>{w}</li>)}</ul><p>Качество сигнала: {Math.round(analysis.confidence * 100)}/100. Это оценка контура, а не вероятность правильной детали.</p></details>
     </div>}
       <Choice active={active && step === 1} id="photo-type" label="Тип по осмотру детали" value={kind} onChange={chooseDirectKind} options={{ unknown: 'Пока не знаю', ...Object.fromEntries(inferredKinds.map(key => [key, modelNames[key]])), other: 'Циклоидальный, конус, червяк или другой тип' }} />
-      <FamilyAssistant key={imageSize?.id ?? 'no-photo'} active={active && step === 1} source="photo" photoHint={analysis?.candidateTypes[0] ?? null}
+      <FamilyAssistant key={`${imageSize?.id ?? 'no-photo'}-${analysisRevision}`} active={active && step === 1 && !busy} source="photo" photoHint={analysis?.candidateTypes[0] ?? null}
         application={familyApplication} engaged={familyPending || !!familyApplication}
         onDraftChange={() => { onDraftChange(); setFamilyApplication(null); setFamilyPending(true); }} onApply={applyFamily}
         onCancel={() => { onDraftChange(); setFamilyApplication(null); setFamilyPending(false); }} />
@@ -213,10 +240,10 @@ export function PhotoWizard({ onApply, onManual, onManualFamily, onDraftChange, 
     <section hidden={step !== 2} aria-label="Масштаб и профиль">
       <p className="step-intro">Известный размер задаёт масштаб. Профиль и его углы берём из измерений или документации — по одному контуру их не определить.</p>
       <Choice active={active && step === 2} id="photo-profile" label="Профиль по чертежу или измерениям" value={profile} onChange={v => editProfile(setProfile, v)} options={{ unknown: 'Не подтверждён', involute: 'Эвольвентный подтверждён', other: 'Циклоидальный или другой' }} />
-      {image && imageSize && supported && !rack && <PhotoScale key={`${imageSize.id}-${kind}`} active={active && step === 2} image={image} width={imageSize.width} height={imageSize.height} internal={internal} isApplied={photoMeasurement !== null}
+      {image && imageSize && supported && !rack && <PhotoScale key={`${imageSize.id}-${analysisRevision}-${kind}`} active={active && step === 2} image={image} width={imageSize.width} height={imageSize.height} internal={internal} isApplied={photoMeasurement !== null}
         onInvalidated={invalidatePhotoMeasurement} onMeasured={measurement => { onDraftChange(); invalidateSpan(); setPhotoMeasurement(measurement); setDiameter(String(measurement.result.diameterMm)); setDiameterMethod('tip_circle'); }} />}
       <label className="check-row"><Checkbox checked={standard} onCheckedChange={v => editProfile(setStandard, v === true)} /><span>Подтверждены стандартная высота ha* = 1 и отсутствие укорочения или модификации вершин.</span></label>
-      {kind === 'spur' && <SpanMeasurementAssistant key={imageSize?.id ?? 'no-image'} teeth={Number(teeth)} toolTipRadiusCoefficient={.3}
+      {kind === 'spur' && <SpanMeasurementAssistant key={`${imageSize?.id ?? 'no-image'}-${analysisRevision}`} teeth={Number(teeth)} toolTipRadiusCoefficient={.3}
         facts={{ teeth: typeReady, involute: profile === 'involute', standardTip: standard }}
         seed={{ ...(diameter !== '' ? { diameter: Number(diameter), diameterMethod: diameterMethod as SpanMeasurementInput['tipDiameterMethod'] } : {}), ...(alpha !== '' ? { pressureAngle: Number(alpha) } : {}) }}
         application={spanApplication} engaged={spanPath} onDraftChange={() => { onDraftChange(); setSpanApplication(null); setSpanPending(true); }}
