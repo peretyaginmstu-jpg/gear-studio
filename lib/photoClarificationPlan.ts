@@ -179,7 +179,7 @@ export function buildPhotoClarificationPlan(context: PhotoClarificationContext):
 export function photoClarificationPlanMarkdown(plan: PhotoClarificationPlan): string {
   const text = (value: string) => value.replace(/\s+/g, ' ').replace(/[\\`*_{}\[\]<>#|]/g, '\\$&');
   return [
-    '# План уточнений для фото детали', '', 'Зацепление 0.13.0 · локальная памятка', '',
+    '# План уточнений для фото детали', '', 'Зацепление 0.14.0 · локальная памятка', '',
     '## Следующее действие', '', text(plan.nextAction), '',
     '## Введено сейчас', '', ...plan.entered.map(value => `- ${text(value.label)}: ${text(value.value)}${value.note ? ` (${text(value.note)})` : ''}.`), '',
     'Введённое значение и указанный источник сами по себе не доказывают правильность измерения.', '',

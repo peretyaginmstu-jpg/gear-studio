@@ -7,7 +7,7 @@ import { assessPrint, type PrintSettings } from './printability.ts';
 export function createPrintBrief(mesh: ModelMesh, validation: MeshValidation, settings: PrintSettings,
   provenance: ModelProvenance, createdAt = new Date().toISOString()) {
   return {
-    schema: 'zatseplenie.print-brief.v6', appVersion: '0.13.0', createdAt, units: 'mm',
+    schema: 'zatseplenie.print-brief.v6', appVersion: '0.14.0', createdAt, units: 'mm',
     origin: provenance.origin, evidence: structuredClone(provenance.evidence), parameters: mesh.params,
     dimensions: modelDimensionsForReport(mesh),
     wormDimensions: 'wormDimensions' in mesh ? mesh.wormDimensions : null,

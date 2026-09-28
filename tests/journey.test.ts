@@ -127,7 +127,7 @@ test('fit checkout STL, passport and print brief share the selected representati
   const brief = createPrintBrief(model.mesh, model.validation, defaultPrintSettings, model, '2026-09-28T00:00:00.000Z');
   assert.deepEqual(brief.parameters, prepared.passport.parameters);
   assert.deepEqual(brief.evidence, prepared.passport.evidence); assert.equal(brief.origin, prepared.passport.origin);
-  assert.equal(brief.orderStatus, 'Файл задания. Заказ не отправлен.'); assert.equal(brief.appVersion, '0.13.0');
+  assert.equal(brief.orderStatus, 'Файл задания. Заказ не отправлен.'); assert.equal(brief.appVersion, '0.14.0');
   s = transitionJourney(s, { type: 'edit-manual-span' }); assert.equal(checkoutSnapshot(s), null);
   assert.equal(prepared.passport.parameters.module, application.candidate.parameters.module);
 });

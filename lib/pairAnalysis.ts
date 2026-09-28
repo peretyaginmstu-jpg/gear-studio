@@ -133,7 +133,7 @@ export function createPairAnalysisDocument(input: PairInput, createdAt = new Dat
   const coneInput = snapshot.first.kind === 'bevel' || snapshot.second.kind === 'bevel';
   const cycloidalInput = snapshot.first.kind === 'cycloidal' || snapshot.second.kind === 'cycloidal';
   return {
-    schema: 'zatseplenie.pair-analysis.v3', appVersion: '0.13.0', createdAt, units: 'mm',
+    schema: 'zatseplenie.pair-analysis.v3', appVersion: '0.14.0', createdAt, units: 'mm',
     input: {
       first: snapshot.first, second: hasVisibleMate ? snapshot.second : null,
       centerDistanceMm: hasVisibleMate && !coneInput ? snapshot.centerDistanceMm ?? null : null,
