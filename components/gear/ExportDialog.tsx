@@ -1,11 +1,12 @@
 "use client";
 import { useEffect, useState } from 'react';
-import { Download, CheckCircle2, LoaderCircle, FileJson } from 'lucide-react';
+import { Download, CheckCircle2, LoaderCircle, FileJson, PenTool } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import { modelNames, type ModelParams } from '@/lib/model';
 import { exportPresets, prepareModelExport, type ExportPreset, type ModelProvenance } from '@/lib/modelExport';
 import { downloadBlob } from '@/lib/download';
+import { modelProfileDxf, supportsDxf } from '@/lib/dxfExport';
 import { modelDocumentInput, type ModelDocumentInput } from '@/lib/modelDocumentData';
 import { ExportDocuments } from './ExportDocuments';
 
@@ -47,6 +48,12 @@ function ExportContent({ params, preset, origin, evidence, projectName, manufact
     <label className="check-row"><Checkbox checked={accepted} onCheckedChange={v => setAccepted(v === true)} /><span>Условия модели понятны. Использую STL для пробного изготовления и проверки.</span></label>
     {prepared && accepted ? <a className="primary-button full" href={prepared.url} download={prepared.filename} data-testid="stl-download"><Download size={17} /> Скачать модель</a> : <button className="primary-button full" disabled><Download size={17} /> Скачать модель</button>}
     <button className="secondary-button full" disabled={!prepared} data-testid="export-passport" onClick={() => { if (prepared) downloadBlob(prepared.passport, 'application/json', prepared.filename.replace('.stl', '-passport.json')); }}><FileJson size={17} /> Паспорт этого STL</button>
+    {supportsDxf(params) && <button className="secondary-button full" disabled={!prepared || !accepted} data-testid="export-dxf" onClick={() => {
+      if (!prepared) return;
+      try { downloadBlob(modelProfileDxf(params).dxf, 'application/dxf', prepared.filename.replace(/-(standard|pro)\.stl$/, '-profile.dxf')); }
+      catch (e) { setError(e instanceof Error ? e.message : 'Не удалось построить DXF.'); }
+    }}><PenTool size={17} /> Контур DXF для резки</button>}
+    {supportsDxf(params) && <p className="field-help">DXF — торцевой профиль в средней плоскости венца, мм, с отверстием и делительной окружностью. {params.kind.includes('helical') || params.kind === 'herringbone' ? 'Для косозубого колеса это сечение, а не развёртка зуба: для лазера и электроэрозии подходит только прямой зуб.' : 'Подходит для лазера, гидроабразива и электроэрозии; компенсацию инструмента задаёт исполнитель.'}</p>}
     {prepared && <ExportDocuments key={prepared.url} input={prepared.documents} accepted={accepted} />}
   </DialogContent>;
 }
