@@ -257,6 +257,10 @@ export function PhotoWizard({ onApply, onManual, onManualFamily, onDraftChange, 
       <p className="step-intro">Известный размер задаёт масштаб. Профиль и его углы берём из измерений или документации — по одному контуру их не определить.</p>
       <PhotoClarificationPlan plan={clarificationPlan} active={active && step === 2} />
       <Choice active={active && step === 2} id="photo-profile" label="Профиль по чертежу или измерениям" value={profile} onChange={v => editProfile(setProfile, v)} options={{ unknown: 'Не подтверждён', involute: 'Эвольвентный подтверждён', other: 'Циклоидальный или другой' }} />
+      {profile === 'other' && <div className="expert-note" role="status">
+        <p>Для циклоидального и специального профиля нужна отдельная геометрия. Фото-помощник не подменяет её эвольвентой. Перейдите к ручным настройкам и выберите подходящее семейство — снимок и ответы останутся в этом черновике.</p>
+        <button className="inline-link" onClick={onManual}>Выбрать геометрию вручную <ArrowRight size={14} /></button>
+      </div>}
       {image && imageSize && supported && !rack && <PhotoScale key={`${imageSize.id}-${analysisRevision}-${kind}`} active={active && step === 2} image={image} width={imageSize.width} height={imageSize.height} internal={internal} isApplied={photoMeasurement !== null}
         onInvalidated={invalidatePhotoMeasurement} onMeasured={measurement => { onDraftChange(); invalidateSpan(); setPhotoMeasurement(measurement); setDiameter(String(measurement.result.diameterMm)); setDiameterMethod('tip_circle'); }} />}
       <label className="check-row"><Checkbox checked={standard} onCheckedChange={v => editProfile(setStandard, v === true)} /><span>Подтверждены стандартная высота ha* = 1 и отсутствие укорочения или модификации вершин.</span></label>
