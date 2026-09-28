@@ -11,7 +11,8 @@
     "build:pages": "next build --webpack",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "check": "tsc --noEmit",
-    "lint": "eslint . --ignore-pattern out --ignore-pattern .next"
+    "lint": "eslint . --ignore-pattern out --ignore-pattern .next",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

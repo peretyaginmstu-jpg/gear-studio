@@ -47,3 +47,5 @@ next-env.d.ts
 # Former unpublished Sites registration; GitHub Pages is the deployment target.
 /.openai/
 *.tsbuildinfo
+test-results/
+playwright-report/
