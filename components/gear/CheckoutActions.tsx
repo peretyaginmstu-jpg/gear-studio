@@ -10,6 +10,7 @@ import { useProjectField } from './ProjectContext';
 import { emptyManufacturingDraft } from '@/lib/manufacturing';
 import { SampleInspections } from './SampleInspections';
 import type { SampleInspection } from '@/lib/sampleInspection';
+import { LayersOrder } from './LayersOrder';
 
 /** Mounted only for a confirmed checkout snapshot; leaving checkout closes its dialogs. */
 export function CheckoutActions({ model, choice, onChange, projectName }: { model: BuiltModel; choice: DeliveryChoice; onChange: () => void; projectName: string }) {
@@ -31,6 +32,7 @@ export function CheckoutActions({ model, choice, onChange, projectName }: { mode
       {isPrint ? 'Настроить печать и получить задание' : `Скачать ${choice.preset === 'pro' ? 'Pro' : 'Standard'} STL`} <ArrowRight size={20} />
     </button>
     {isPrint && <button className="secondary-button full" onClick={() => setExportPreset('standard')}><Download size={18} /> Скачать STL этой модели</button>}
+    <LayersOrder model={model} projectName={projectName} manufacturing={manufacturing} />
     <button className="inline-link" onClick={onChange}>Изменить способ получения</button>
     <p className="delivery-note"><Info size={19} />{isPrint ? 'Задание скачивается на ваше устройство. Заказ исполнителю не отправляется; стоимость изготовления и оплата будут отдельным шагом позже.' : 'Оплата не требуется. Скачивание не подтверждает пригодность детали под нагрузкой: перед изготовлением проверьте сопряжение.'}</p>
     <ExportDialog open={exportPreset !== null} onOpenChange={open => { if (!open) setExportPreset(null); }} params={model.params} preset={exportPreset ?? 'standard'} origin={model.origin} evidence={model.evidence} projectName={projectName} manufacturing={manufacturing} inspections={inspections} />
