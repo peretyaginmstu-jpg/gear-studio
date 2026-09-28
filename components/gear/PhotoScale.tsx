@@ -5,6 +5,7 @@ import { Check, Ruler, RotateCcw, Undo2, ZoomIn } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { estimatePhotoCircle, photoScaleSources, type PhotoPoint, type PhotoScaleInput, type PhotoScaleReadyResult } from '@/lib/photo-scale';
+import { MeasurementIllustration } from './MeasurementIllustration';
 
 export interface PhotoScaleMeasurement {
   method: 'three-tip-circle-with-reference';
@@ -103,6 +104,7 @@ export function PhotoScale({ draftIdentity = 'default', active = true, image, wi
       <DialogContent style={{ width: 'calc(100vw - 24px)', maxWidth: 980, maxHeight: '94dvh', overflowY: 'auto', padding: 22, gap: 12 }}>
         <DialogTitle style={{ paddingRight: 25 }}>Диаметр по эталону на фото</DialogTitle>
         <DialogDescription>Отметьте два конца известного отрезка и три вершины зубьев. Эталон должен быть в одной плоскости с измеряемым торцом.</DialogDescription>
+        <details className="measurement-scale-help"><summary>Как расположить эталон — схема сбоку</summary><div><MeasurementIllustration diagram="scale" /><p>Если деталь лежит на столе, её торец выше стола. Поднимите метки эталона до этого уровня и направьте камеру по оси колеса. Наклон камеры и искажения объектива не входят в условный интервал измерения.</p></div></details>
         <ol aria-label="Этапы измерения" style={{ ...rowStyle, margin: 0, padding: 0, listStyle: 'none', fontSize: 13 }}>
           {[[1, `Эталон ${referencePoints.length}/2`], [2, `Вершины ${tipPoints.length}/3`], [3, 'Проверка']].map(([number, label]) =>
             <li key={number} aria-current={step === number ? 'step' : undefined} style={{ padding: '7px 10px', borderRadius: 5, background: step === number ? 'var(--accent)' : 'var(--muted)', fontWeight: step === number ? 650 : 400 }}>{number}. {label}</li>)}

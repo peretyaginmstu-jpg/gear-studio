@@ -5,6 +5,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@
 import { isHelicalKind, isInternalKind, isRackKind, modelNames, type ModelKind, type ModelParams } from '@/lib/model';
 import { useActivePopup } from './useActivePopup';
 import { InternalCutterFields } from './InternalCutterFields';
+import { MeasurementGuide } from './MeasurementGuide';
 
 export function ParameterEditor({ active = true, params, onChange, onKind, onHand, onReset, onReference, familyAssistant }: {
   active?: boolean; params: ModelParams; onChange: (key: keyof ModelParams, value: number) => void;
@@ -22,6 +23,7 @@ export function ParameterEditor({ active = true, params, onChange, onKind, onHan
       <button className="family-help" onClick={onReference}>Область применения <ArrowUpRight size={14} /></button>
     </div>
     {familyAssistant}
+    <MeasurementGuide active={active} kind={params.kind} teeth={params.teeth} initialTopic="module" label="Как измерить вашу деталь" hint="Модуль, зубья и размеры тела — на схемах" />
     <div className="input-grid editor-fields">
       {worm ? <NumberField label="Число заходов" symbol="z₁" value={params.wormStarts ?? 1} min={1} max={8} onChange={v => onChange('wormStarts', v)} />
         : <NumberField label="Число зубьев" symbol="z" value={params.teeth} min={rack ? 1 : 6} max={250} onChange={v => onChange('teeth', v)} />}

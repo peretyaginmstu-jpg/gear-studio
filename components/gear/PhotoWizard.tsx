@@ -22,6 +22,7 @@ import { buildPhotoClarificationPlan } from '@/lib/photoClarificationPlan';
 import { PhotoClarificationPlan } from './PhotoClarificationPlan';
 import { confirmedCycloidalPhotoToothCount, transitionPhotoToothCountDraft, type ConfirmedCycloidalPhotoToothCount, type PhotoToothCountResetReason } from '@/lib/photo-draft';
 import { inferCycloidalPhotoModule, type CycloidalPhotoModuleInference } from '@/lib/cycloidalPhotoInference';
+import { MeasurementGuide } from './MeasurementGuide';
 
 type ApplyParams = Partial<ModelParams> & { kind: InferredGearKind };
 const inferredKinds: InferredGearKind[] = ['spur', 'helical', 'herringbone', 'internal', 'internal-helical', 'rack', 'helical-rack'];
@@ -246,6 +247,7 @@ export function PhotoWizard({ onApply, onManual, onManualFamily, onDraftChange, 
     <h2 ref={stepHeading} tabIndex={-1} className="photo-step-heading">{stepTitles[step]}</h2>
     {error && <p className="inline-error" role="alert">{error}</p>}
     <section hidden={step !== 0} aria-label="Фото и качество">
+      <MeasurementGuide source="photo" active={active && step === 0} kind={kind} initialTopic="capture" label="Как подготовить снимок" hint="Контур, ракурс и эталон — на схемах" />
       <input ref={fileInput} aria-label="Загрузить фото колеса" className="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp" onChange={e => { void loadFile(e.target.files?.[0]); e.target.value = ''; }} />
       <button className={`upload-zone ${image ? 'with-image' : ''}`} onClick={() => fileInput.current?.click()} onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); void loadFile(e.dataTransfer.files[0]); }} disabled={busy}>
         {image ? <img src={image} alt="Загруженный образец для анализа контура" /> : <><Camera size={27} /><strong>Добавьте фото колеса</strong><span>Перетащите сюда или выберите файл</span></>}
@@ -258,6 +260,7 @@ export function PhotoWizard({ onApply, onManual, onManualFamily, onDraftChange, 
     </section>
     <section hidden={step !== 1} aria-label="Тип и число зубьев">
       <p className="step-intro">Контур даёт подсказку. Сверьте её с самой деталью, особенно если часть зубьев сломана.</p>
+      <MeasurementGuide source="photo" active={active && step === 1} kind={kind} teeth={Number(teeth)} initialTopic="teeth" label="Как различить зубья" hint="Прямые, косые, шеврон — смотрим сбоку" />
       {busy && <p className="inline-status" role="status">Анализируем выбранную область…</p>}
       {image && imageSize && <PhotoRegionDialog key={imageSize.id} active={active && step === 1} busy={busy} image={image} width={imageSize.width} height={imageSize.height} region={region} onApply={next => { void applyRegion(next); }} />}
     {analysis && <div className="photo-result"><span className="photo-result-title"><ScanLine size={17} />{analysis.damageHypothesis ? 'Гипотеза при локальном повреждении' : analysis.toothCount ? 'Найдена периодичность контура' : 'Нужно уточнение'}</span>
@@ -289,6 +292,7 @@ export function PhotoWizard({ onApply, onManual, onManualFamily, onDraftChange, 
       {!typeReady && <p className="field-help">Выберите тип и отдельно подтвердите полное число зубьев. Помощник типа и гипотеза контура не подтверждают число зубьев.</p>}
     </section>
     <section hidden={step !== 2} aria-label="Масштаб и профиль">
+      <MeasurementGuide source="photo" active={active && step === 2} kind={profile === 'cycloidal' && kind === 'spur' ? 'cycloidal' : kind} teeth={Number(teeth)} initialTopic={rack ? 'pitch' : 'diameter'} label="Что именно измерить" hint={rack ? 'Торцевой шаг, модуль и профиль' : 'Окружность вершин, эталон и модуль'} />
       <p className="step-intro">{profile === 'cycloidal'
         ? 'Для выбранной циклоидальной модели m можно вывести только из подтверждённых z и da при высоте ha=m. Постоянный угол давления здесь не применяется; производящую окружность настройте в ручной модели.'
         : 'Известный размер задаёт масштаб. Профиль и его углы берём из измерений или документации — по одному контуру их не определить.'}</p>
@@ -356,6 +360,7 @@ export function PhotoWizard({ onApply, onManual, onManualFamily, onDraftChange, 
       {!scaleReady && profile !== 'cycloidal' && <p className="field-help">{spanPath ? 'Рассчитайте и явно примените результат общей нормали или вернитесь в помощнике к прямому вводу. До этого перейти к построению нельзя.' : 'Неизвестный угол или профиль лучше уточнить по чертежу, данным ответной детали или измерениям. Помощник не подставляет их за вас.'}</p>}
     </section>
     <section hidden={step !== 3} aria-label="Размеры тела и резюме">
+      <MeasurementGuide source="photo" active={active && step === 3} kind={kind} teeth={Number(teeth)} initialTopic="body" label="Где измерять размеры тела" hint={internal ? 'Ширина венца и стенка обода' : rack ? 'Ширина и основание рейки' : 'Ширина венца и отверстие'} />
       <p className="step-intro">Осталось измерить тело детали. После построения вы сможете повернуть модель и проверить размеры.</p>
       <dl className="photo-summary"><div><dt>Тип</dt><dd>{supported ? modelNames[kind as InferredGearKind] : 'Не подтверждён'}</dd></div><div><dt>Число зубьев</dt><dd>{teeth || '—'}</dd></div><div><dt>Модуль</dt><dd>{calculatedModule !== undefined ? `${calculatedModule.toLocaleString('ru-RU', { maximumFractionDigits: 6 })} мм` : '—'}</dd></div></dl>
       <div className="input-grid photo-spaced"><Measure label="Ширина, мм" value={width} set={v => edit(setWidth, v)} placeholder="Измерьте" /><Measure label={rack ? 'Основание, мм' : internal ? 'Обод, мм' : 'Отверстие, мм'} value={body} set={v => edit(setBody, v)} placeholder={rack || internal ? 'Измерьте' : '0 — сплошное'} /></div>
