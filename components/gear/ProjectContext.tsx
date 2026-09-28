@@ -4,13 +4,14 @@ import { createContext, useContext, useEffect, useState, type Dispatch, type Set
 export interface ProjectDraftStore {
   get: (scope: string, identity: string, field: string) => unknown;
   put: (scope: string, identity: string, field: string, value: unknown) => void;
-  processing: (busy: boolean) => void;
+  processing: (owner: symbol, busy: boolean) => void;
 }
 export const ProjectContext = createContext<ProjectDraftStore | null>(null);
 
 export function useProjectActivity(busy: boolean) {
   const store = useContext(ProjectContext);
-  useEffect(() => { store?.processing(busy); }, [store, busy]);
+  const [owner] = useState(() => Symbol('photo-processing'));
+  useEffect(() => { store?.processing(owner, busy); return () => store?.processing(owner, false); }, [store, owner, busy]);
 }
 
 /** Persist only committed form state. Identity prevents measurements crossing photo/family changes. */

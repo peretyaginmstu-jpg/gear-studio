@@ -7,8 +7,10 @@ import { selectFamilyApplication } from './familyIdentification.ts';
 import { analyzeSpanMeasurement, selectSpanApplication } from './spanMeasurement.ts';
 import { estimatePhotoCircle, photoScaleSources } from './photo-scale.ts';
 import { cycloidalPhotoInferenceMatches, type CycloidalPhotoModuleInference } from './cycloidalPhotoInference.ts';
+import { assertPngDimensions, MAX_REFERENCE_PHOTOS, referencePhotosSchema } from './referencePhotos.ts';
 
-export const PROJECT_SCHEMA = 'zatseplenie.project.v2';
+export const PROJECT_SCHEMA = 'zatseplenie.project.v3';
+export const PREVIOUS_PROJECT_SCHEMA = 'zatseplenie.project.v2';
 export const LEGACY_PROJECT_SCHEMA = 'zatseplenie.project.v1';
 export const MAX_PROJECT_BYTES = 32 * 1024 * 1024;
 export const MAX_PROJECT_VERSIONS = 100;
@@ -88,6 +90,7 @@ const photoForm = z.object({
   step: finite.int().min(0).max(3), image: z.string().max(24 * 1024 * 1024).regex(/^data:image\/png;base64,[A-Za-z0-9+/]+=*$/).nullable(),
   imageSize: z.object({ width: finite.int().min(1).max(2048), height: finite.int().min(1).max(2048), id: finite.int().nonnegative(),
     source: z.object({ fileName: text, mimeType: z.enum(['image/png', 'image/jpeg', 'image/webp']), originalWidth: finite.int().positive().max(60_000_000), originalHeight: finite.int().positive().max(60_000_000) }) }).nullable(),
+  imageReference: z.object({ id: z.string().uuid(), role: z.enum(['side', 'body', 'damage', 'partner', 'other']), note: z.string().max(600) }).strict().nullable(),
   region: z.object({ x: finite.int().nonnegative(), y: finite.int().nonnegative(), width: finite.int().positive(), height: finite.int().positive() }).nullable(),
   analysisRevision: finite.int().nonnegative(), photoMeasurement: photoMeasurement.nullable(),
   kind: z.enum(['unknown', 'other', 'spur', 'helical', 'herringbone', 'internal', 'internal-helical', 'rack', 'helical-rack']),
@@ -105,6 +108,7 @@ const printForm = z.object({ settings: z.object({ bedX: draftNumber, bedY: draft
   nozzle: draftNumber, lineWidth: draftNumber, layer: draftNumber, material: z.enum(['PLA', 'PETG', 'PA', 'PA-CF']) }).strict() }).partial().strict();
 const formSchemas: Record<string, z.ZodTypeAny> = { photo: photoForm, photoFamily: familyForm, manualFamily: familyForm,
   photoSpan: spanForm, manualSpan: spanForm, photoScale: scaleForm, print: printForm,
+  photoReferences: z.object({ photos: referencePhotosSchema }).partial().strict(),
   pair: z.object({ second: modelSchema, center: text }).partial().strict() };
 
 const handoff = z.object({ method: z.literal('confirmed-photo-cycloidal-handoff-v1'), selectedPhotoKind: z.literal('spur'), selectedProfile: z.literal('cycloidal'),
@@ -165,46 +169,55 @@ export function parseProject(contents: string): ProjectDocument {
   let raw: unknown;
   try { raw = JSON.parse(contents); } catch { throw new Error('Файл не является JSON-проектом «Зацепления».'); }
   inspectJson(raw);
-  if (!raw || typeof raw !== 'object' || ![PROJECT_SCHEMA, LEGACY_PROJECT_SCHEMA].includes((raw as { schema: string }).schema))
+  if (!raw || typeof raw !== 'object' || ![PROJECT_SCHEMA, PREVIOUS_PROJECT_SCHEMA, LEGACY_PROJECT_SCHEMA].includes((raw as { schema: string }).schema))
     throw new Error('Неизвестный формат проекта. Нужен файл .gear.json; STL и паспорт не являются файлом проекта.');
+  if ((raw as { schema: string }).schema !== PROJECT_SCHEMA) {
+    const legacy = raw as { forms?: unknown; versions?: { forms?: unknown }[] };
+    const references = (forms: unknown) => !!forms && typeof forms === 'object' && (Object.hasOwn(forms, 'photoReferences')
+      || !!(forms as ProjectForms).photo?.values?.imageReference);
+    if (references(legacy.forms) || Array.isArray(legacy.versions) && legacy.versions.some(version => references(version?.forms)))
+      throw new Error('Несогласованная версия формата: несколько ракурсов требуют v3.');
+  }
   if ((raw as { schema: string }).schema === LEGACY_PROJECT_SCHEMA) {
     // Only the original v1 shape can migrate; never silently discard unexpected history.
     if ('versions' in raw || 'assets' in raw) throw new Error('Несогласованная версия формата проекта.');
     raw = { ...raw, schema: PROJECT_SCHEMA, versions: [], assets: {} };
   }
+  if ((raw as { schema: string }).schema === PREVIOUS_PROJECT_SCHEMA) raw = { ...(raw as Record<string, unknown>), schema: PROJECT_SCHEMA };
   const parsed = documentSchema.safeParse(raw);
   if (!parsed.success) throw new Error(`Не удалось прочитать проект: проверьте поле ${parsed.error.issues[0]?.path.join('.') || 'данных'}.`);
   const { assets, ...doc } = parsed.data;
-  if (Object.keys(assets).length > MAX_PROJECT_VERSIONS + 1) throw new Error('Слишком много фотографий в проекте.');
+  if (Object.keys(assets).length > (MAX_PROJECT_VERSIONS + 1) * (MAX_REFERENCE_PHOTOS + 1)) throw new Error('Слишком много фотографий в проекте.');
   if (new Set(doc.versions.map(version => version.id)).size !== doc.versions.length) throw new Error('Повторяющиеся идентификаторы версий.');
   return { ...doc, forms: parseForms(doc.forms, assets), versions: doc.versions.map(version => ({ ...version, forms: parseForms(version.forms, assets) })) };
 }
 
 function parseForms(saved: ProjectForms, assets: Record<string, string>): ProjectForms {
   const forms: ProjectForms = {};
+  const resolveImage = (image: unknown) => {
+    if (!image || typeof image !== 'object') return image;
+    const ref = z.object({ asset: z.string().regex(/^photo-\d+$/) }).strict().safeParse(image);
+    if (!ref.success || !Object.hasOwn(assets, ref.data.asset)) throw new Error('Не найдена фотография сохранённой версии.');
+    return assets[ref.data.asset];
+  };
   for (const [key, form] of Object.entries(saved)) {
     const schema = formSchemas[key];
     if (!schema) throw new Error(`Неизвестный раздел проекта: ${key}. Обновите приложение.`);
     let values = form.values;
-    if (key === 'photo' && values.image && typeof values.image === 'object') {
-      const ref = z.object({ asset: z.string().regex(/^photo-\d+$/) }).strict().safeParse(values.image);
-      if (!ref.success || !Object.hasOwn(assets, ref.data.asset)) throw new Error('Не найдена фотография сохранённой версии.');
-      values = { ...values, image: assets[ref.data.asset] };
-    }
+    if (key === 'photo' && values.image) values = { ...values, image: resolveImage(values.image) };
+    if (key === 'photoReferences' && Array.isArray(values.photos)) values = { ...values,
+      photos: values.photos.map(photo => photo && typeof photo === 'object' ? { ...photo, image: resolveImage(photo.image) } : photo) };
     const result = schema.safeParse(values);
     if (!result.success) throw new Error(`Повреждены данные раздела ${key}. Исходный проект не изменён.`);
     forms[key] = { identity: form.identity, values: result.data };
   }
   const photo = forms.photo?.values as z.infer<typeof photoForm> | undefined;
   if (!!photo?.image !== !!photo?.imageSize) throw new Error('Фотография и её размеры не согласованы.');
+  if (photo?.imageReference && (!photo.image || (forms.photoReferences?.values.photos as { id: string }[] | undefined)?.some(item => item.id === photo.imageReference!.id)))
+    throw new Error('Идентификатор основного снимка не согласован с ракурсами.');
   if (photo?.image && photo.imageSize) {
     // Check PNG header dimensions before image decoding; remote images and SVG cannot enter a project.
-    const header = atob(photo.image.slice('data:image/png;base64,'.length, 'data:image/png;base64,'.length + 44));
-    const bytes = Uint8Array.from(header, c => c.charCodeAt(0));
-    const view = new DataView(bytes.buffer);
-    if (bytes.length < 24 || view.getUint32(0) !== 0x89504e47 || view.getUint32(4) !== 0x0d0a1a0a || view.getUint32(12) !== 0x49484452
-      || view.getUint32(16) !== photo.imageSize.width || view.getUint32(20) !== photo.imageSize.height)
-      throw new Error('Размеры PNG не совпадают с проектом.');
+    assertPngDimensions(photo.image, photo.imageSize.width, photo.imageSize.height);
     if (photo.region && (photo.region.x + photo.region.width > photo.imageSize.width || photo.region.y + photo.region.height > photo.imageSize.height))
       throw new Error('Область детали выходит за фотографию.');
   }
@@ -242,14 +255,21 @@ export function restoreProjectJourney(project: ProjectDocument): JourneyState {
 /** The file stores each photo once, while editable snapshots keep ordinary image strings in memory. */
 export function serializeProject(project: ProjectDocument): string {
   const assets: Record<string, string> = {}, images = new Map<string, string>();
-  const packForms = (forms: ProjectForms): ProjectForms => {
-    const image = forms.photo?.values.image;
-    if (typeof image !== 'string' || !image.startsWith('data:image/png;base64,')) return forms;
+  const packImage = (image: unknown): unknown => {
+    if (typeof image !== 'string' || !image.startsWith('data:image/png;base64,')) return image;
     let key = images.get(image);
     if (!key) { key = `photo-${images.size + 1}`; images.set(image, key); assets[key] = image; }
-    return { ...forms, photo: { ...forms.photo, values: { ...forms.photo.values, image: { asset: key } } } };
+    return { asset: key };
   };
-  const contents = JSON.stringify({ ...project, forms: packForms(project.forms),
+  const packForms = (forms: ProjectForms): ProjectForms => {
+    const packed = { ...forms };
+    if (forms.photo?.values.image) packed.photo = { ...forms.photo, values: { ...forms.photo.values, image: packImage(forms.photo.values.image) } };
+    const refs = forms.photoReferences;
+    if (refs && Array.isArray(refs.values.photos)) packed.photoReferences = { ...refs, values: { ...refs.values,
+      photos: refs.values.photos.map(photo => ({ ...photo, image: packImage(photo.image) })) } };
+    return packed;
+  };
+  const contents = JSON.stringify({ ...project, schema: PROJECT_SCHEMA, forms: packForms(project.forms),
     versions: project.versions.map(version => ({ ...version, forms: packForms(version.forms) })), assets }, null, 2);
   if (new TextEncoder().encode(contents).byteLength > MAX_PROJECT_BYTES) throw new ProjectSizeError();
   return contents;

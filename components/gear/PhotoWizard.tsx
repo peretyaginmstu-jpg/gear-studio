@@ -23,10 +23,14 @@ import { PhotoClarificationPlan } from './PhotoClarificationPlan';
 import { confirmedCycloidalPhotoToothCount, transitionPhotoToothCountDraft, type ConfirmedCycloidalPhotoToothCount, type PhotoToothCountResetReason } from '@/lib/photo-draft';
 import { inferCycloidalPhotoModule, type CycloidalPhotoModuleInference } from '@/lib/cycloidalPhotoInference';
 import { MeasurementGuide } from './MeasurementGuide';
+import { preparePhotoFile, prepareReferenceFromMain, photoPixels } from '@/lib/preparePhoto';
+import { swapReferencePhoto, referencePhotoRoles, type ReferencePhoto, type WorkingPhoto } from '@/lib/referencePhotos';
+import { ReferencePhotos } from './ReferencePhotos';
+import type { ReferencePhotosController } from './useReferencePhotos';
 
 type ApplyParams = Partial<ModelParams> & { kind: InferredGearKind };
 const inferredKinds: InferredGearKind[] = ['spur', 'helical', 'herringbone', 'internal', 'internal-helical', 'rack', 'helical-rack'];
-export function PhotoWizard({ onApply, onManual, onManualFamily, onDraftChange, active = true }: { onApply: (p: ApplyParams, source: string, evidence: unknown) => void; onManual: (kind?: ModelKind, handoff?: {
+export function PhotoWizard({ referencePhotos, onApply, onManual, onManualFamily, onDraftChange, active = true }: { referencePhotos: ReferencePhotosController; onApply: (p: ApplyParams, source: string, evidence: unknown) => void; onManual: (kind?: ModelKind, handoff?: {
   toothCount?: ConfirmedCycloidalPhotoToothCount; moduleInference: CycloidalPhotoModuleInference; photoScaleEvidence?: unknown;
 }) => void;
   onManualFamily: (application: FamilyApplication) => void; onDraftChange: () => void; active?: boolean }) {
@@ -38,7 +42,8 @@ export function PhotoWizard({ onApply, onManual, onManualFamily, onDraftChange, 
   const pixels = useRef<ImageDataLike | null>(null);
   const [region, setRegion] = useProjectField<PhotoRegion | null>('photo', 'region', null), [analysisEvidence, setAnalysisEvidence] = useState<PhotoRegionEvidence | null>(null);
   const [analysisRevision, setAnalysisRevision] = useProjectField('photo', 'analysisRevision', 0);
-  const [imageSize, setImageSize] = useProjectField<{ width: number; height: number; id: number; source: { fileName: string; mimeType: string; originalWidth: number; originalHeight: number } } | null>('photo', 'imageSize', null);
+  const [imageSize, setImageSize] = useProjectField<{ width: number; height: number; id: number; source: WorkingPhoto['source'] } | null>('photo', 'imageSize', null);
+  const [imageReference, setImageReference] = useProjectField<Pick<ReferencePhoto, 'id' | 'role' | 'note'> | null>('photo', 'imageReference', null);
   const [photoMeasurement, setPhotoMeasurement] = useProjectField<PhotoScaleMeasurement | null>('photo', 'photoMeasurement', null);
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
   useProjectActivity(busy);
@@ -134,31 +139,41 @@ export function PhotoWizard({ onApply, onManual, onManualFamily, onDraftChange, 
     catch (e) { if (id === request.current) setError(e instanceof Error ? e.message : 'Не удалось проанализировать область.'); }
     finally { if (id === request.current) setBusy(false); }
   };
+  const commitMain = (photo: WorkingPhoto, input: ImageDataLike, result: ReturnType<typeof analyzeGearRegion>, id: number, view: typeof imageReference) => {
+    onDraftChange(); resetAnswers(); setStep(0); setRegion(null); setAnalysisRevision(value => value + 1);
+    setImage(photo.image); setImageSize({ width: photo.width, height: photo.height, id, source: photo.source }); setImageReference(view);
+    pixels.current = input; setAnalysis(result.analysis); setAnalysisEvidence(result.evidence); setError('');
+    if (result.analysis.toothCount) setTeeth(String(result.analysis.toothCount));
+    requestAnimationFrame(() => { stepHeading.current?.focus({ preventScroll: true }); stepHeading.current?.scrollIntoView({ block: 'nearest' }); });
+  };
   const loadFile = async (file?: File) => {
-    if (!file) return;
-    onDraftChange(); setStep(0);
-    const id = ++request.current;
-    setBusy(false); setError(''); setAnalysis(null); setAnalysisEvidence(null); setRegion(null); pixels.current = null;
-    setAnalysisRevision(value => value + 1); setImage(null); setImageSize(null); resetAnswers();
-    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) { setError('Подойдут JPG, PNG или WebP. HEIC сначала сохраните в JPEG.'); return; }
-    if (file.size > 20 * 1024 * 1024) { setError('Файл больше 20 МБ. Уменьшите изображение.'); return; }
-    setBusy(true);
+    if (!file || busy) return;
+    const id = ++request.current; setBusy(true); setError('');
     try {
-      const bitmap = await createImageBitmap(file);
-      if (id !== request.current) { bitmap.close(); return; }
-      if (bitmap.width * bitmap.height > 60_000_000) { bitmap.close(); throw new Error('Уменьшите изображение до 60 Мп или меньше.'); }
-      const sourceImage = { fileName: file.name, mimeType: file.type, originalWidth: bitmap.width, originalHeight: bitmap.height };
-      const scale = Math.min(1, 2048 / Math.max(bitmap.width, bitmap.height)), canvas = document.createElement('canvas');
-      canvas.width = Math.max(1, Math.round(bitmap.width * scale)); canvas.height = Math.max(1, Math.round(bitmap.height * scale));
-      const ctx = canvas.getContext('2d', { willReadFrequently: true });
-      if (!ctx) { bitmap.close(); throw new Error('Не удалось прочитать фото.'); }
-      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height); bitmap.close();
+      const photo = await preparePhotoFile(file), input = await photoPixels(photo);
       if (id !== request.current) return;
-      setImageSize({ width: canvas.width, height: canvas.height, id, source: sourceImage });
-      setImage(canvas.toDataURL('image/png'));
-      const input = ctx.getImageData(0, 0, canvas.width, canvas.height); pixels.current = input;
-      await runAnalysis(input, null, id);
-    } catch (e) { if (id === request.current) setError(e instanceof Error ? e.message : 'Не удалось открыть файл.'); }
+      const result = analyzeGearRegion(input, null);
+      // Commit only after decoding and analysis succeed; a failed replacement keeps all prior work.
+      commitMain(photo, input, result, id, null);
+    } catch (e) { if (id === request.current) setError(`${e instanceof Error ? e.message : 'Не удалось открыть файл.'} Прежнее фото и ответы сохранены.`); }
+    finally { if (id === request.current) setBusy(false); }
+  };
+  const promoteReference = async (referenceId: string): Promise<boolean> => {
+    const selected = referencePhotos.photos.find(photo => photo.id === referenceId);
+    if (!selected || busy || referencePhotos.busy) return false;
+    const id = ++request.current; setBusy(true); setError('');
+    try {
+      const input = await photoPixels(selected);
+      const previous: ReferencePhoto | null = image && imageSize ? {
+        ...await prepareReferenceFromMain({ image, width: imageSize.width, height: imageSize.height, source: imageSize.source }),
+        id: imageReference?.id ?? crypto.randomUUID(), role: imageReference?.role ?? 'other', note: imageReference?.note ?? '',
+      } : null;
+      if (id !== request.current) return false;
+      const result = analyzeGearRegion(input, null), next = swapReferencePhoto(referencePhotos.photos, selected.id, previous);
+      referencePhotos.replaceFromPrimary(next);
+      commitMain(selected, input, result, id, { id: selected.id, role: selected.role, note: selected.note });
+      return true;
+    } catch (e) { if (id === request.current) referencePhotos.reportError(e instanceof Error ? e.message : 'Не удалось сменить основное фото.'); return false; }
     finally { if (id === request.current) setBusy(false); }
   };
   const input = useMemo((): PhotoInferenceInput => {
@@ -220,6 +235,7 @@ export function PhotoWizard({ onApply, onManual, onManualFamily, onDraftChange, 
           ...(spanPath ? { rawDiameterEqualsSpanReading: photoMeasurement.result.diameterMm === spanApplication!.input.tipDiameterMm } : {}) } } : {}),
         ...(analysis ? { photoAnalysisEvidence: {
           algorithm: analysis.diagnostics.algorithm, status: analysis.status, sourceImage: imageSize?.source,
+          sourceView: imageReference,
           analysisRegion: analysisEvidence,
           workingImage: imageSize ? { width: imageSize.width, height: imageSize.height } : null,
           coordinateSystem: 'working_image_pixels; origin=top-left; angle=clockwise-from-right',
@@ -246,14 +262,19 @@ export function PhotoWizard({ onApply, onManual, onManualFamily, onDraftChange, 
     <ol className="photo-progress" aria-label="Шаги помощника по фото">{['Фото', 'Тип и зубья', 'Масштаб', 'Размеры'].map((label, i) => <li key={label} aria-current={step === i ? 'step' : undefined}><span>{i + 1}</span>{label}</li>)}</ol>
     <h2 ref={stepHeading} tabIndex={-1} className="photo-step-heading">{stepTitles[step]}</h2>
     {error && <p className="inline-error" role="alert">{error}</p>}
+    {step !== 0 && <ReferencePhotos controller={referencePhotos} active={active} disabled={busy} onUseForContour={promoteReference} onReturnToMain={() => stepHeading.current?.focus({ preventScroll: true })}
+      hint={step === 1 ? 'Сверьте направление зубьев на виде сбоку' : step === 3 ? 'Сверьте венец, отверстие и выступы' : 'Сопоставьте снимки с измерениями и чертежом'} />}
     <section hidden={step !== 0} aria-label="Фото и качество">
       <MeasurementGuide source="photo" active={active && step === 0} kind={kind} initialTopic="capture" label="Как подготовить снимок" hint="Контур, ракурс и эталон — на схемах" />
+      <p className="photo-main-label">Основное фото — для контура и масштаба</p>
       <input ref={fileInput} aria-label="Загрузить фото колеса" className="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp" onChange={e => { void loadFile(e.target.files?.[0]); e.target.value = ''; }} />
       <button className={`upload-zone ${image ? 'with-image' : ''}`} onClick={() => fileInput.current?.click()} onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); void loadFile(e.dataTransfer.files[0]); }} disabled={busy}>
         {image ? <img src={image} alt="Загруженный образец для анализа контура" /> : <><Camera size={27} /><strong>Добавьте фото колеса</strong><span>Перетащите сюда или выберите файл</span></>}
-        <span className="upload-caption"><Upload size={14} />{image ? 'Заменить фото' : 'JPG, PNG, WebP · до 20 МБ'}</span>
+        <span className="upload-caption"><Upload size={14} />{image ? 'Заменить основное фото' : 'JPG, PNG, WebP · до 20 МБ'}</span>
       </button>
       {image && imageSize && <PhotoRegionDialog key={imageSize.id} active={active && step === 0} busy={busy} image={image} width={imageSize.width} height={imageSize.height} region={region} onApply={next => { void applyRegion(next); }} />}
+      {imageReference && <p className="photo-main-note"><strong>{referencePhotoRoles[imageReference.role]}</strong>{imageReference.note || 'Этот ракурс выбран основным для анализа.'}</p>}
+      {(image || referencePhotos.photos.length > 0) && <ReferencePhotos controller={referencePhotos} active={active && step === 0} disabled={busy} onUseForContour={promoteReference} onReturnToMain={() => stepHeading.current?.focus({ preventScroll: true })} hint="Сбоку, посадка, повреждение или ответная деталь" />}
       <ul className="photo-hints"><li>Снимите торец строго сверху на однотонном фоне.</li><li>Для измерения по фото положите рядом эталон известного размера в плоскости торца.</li><li>Фото останется на устройстве. Размеры и профиль подтвердим дальше.</li></ul>
       {busy && <p className="inline-status" role="status">Анализируем контур…</p>}
       {analysis && <p className="inline-status" role="status"><Check size={17} /> Фото прочитано. Дальше проверим тип детали и зубья.</p>}

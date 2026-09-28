@@ -54,6 +54,7 @@ function ProjectEditor({ loaded, activate, component: Studio }: { loaded: Loaded
   const [search, setSearch] = useState('');
   const [historyDocument, setHistoryDocument] = useState<ProjectDocument | null>(null), [historyError, setHistoryError] = useState<string | null>(null);
   const [actionBusy, setActionBusy] = useState(false), [inputBusy, setInputBusy] = useState(false);
+  const inputOwners = useRef(new Set<symbol>());
   const busy = actionBusy || inputBusy;
   const fileInput = useRef<HTMLInputElement>(null);
 
@@ -92,7 +93,7 @@ function ProjectEditor({ loaded, activate, component: Studio }: { loaded: Loaded
     timer.current = setTimeout(() => { void flush(); }, 400);
   }, [flush]);
   const drafts = useMemo<ProjectDraftStore>(() => ({
-    processing: setInputBusy,
+    processing: (owner, busy) => { if (busy) inputOwners.current.add(owner); else inputOwners.current.delete(owner); setInputBusy(inputOwners.current.size > 0); },
     get: (scope, identity, field) => {
       const entry = document.current.forms[scope];
       return entry?.identity === identity ? entry.values[field] : undefined;

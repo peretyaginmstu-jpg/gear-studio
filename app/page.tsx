@@ -17,6 +17,9 @@ import { buildModelMesh, defaultModel, type ModelParams, type ModelKind } from '
 import { canVisit, checkoutSnapshot, hasCurrentModel, type JourneyStage, type InputMode } from '@/lib/journey';
 import { APP_VERSION } from '@/lib/appVersion';
 import { ProjectWorkspace, type ProjectSession } from '@/components/gear/ProjectWorkspace';
+import { useReferencePhotos } from '@/components/gear/useReferencePhotos';
+import { ReferencePhotos } from '@/components/gear/ReferencePhotos';
+import { referencePhotoManifest } from '@/lib/referencePhotos';
 
 const stages: { stage: JourneyStage; title: string }[] = [
   { stage: 'input', title: 'Исходные данные' }, { stage: 'review', title: 'Проверка модели' },
@@ -30,6 +33,7 @@ export default function Home() {
 
 function Studio({ project }: { project: ProjectSession }) {
   const { state, send } = useJourney(project.initial, project.onJourney), heading = useRef<HTMLHeadingElement>(null);
+  const referencePhotos = useReferencePhotos(() => send({ type: 'edit-reference-photos' }));
   const [reference, setReference] = useState(false);
   const deferred = useDeferredValue(state.manualDraft), updating = deferred !== state.manualDraft;
   const manualCheck = useMemo(() => {
@@ -48,7 +52,7 @@ function Studio({ project }: { project: ProjectSession }) {
   const selectKind = (kind: ModelKind) => send({ type: 'select-manual-kind', kind });
   const chooseInput = (mode: InputMode) => send({ type: 'choose-input', mode });
   const navigate = (stage: JourneyStage) => send({ type: 'navigate', stage });
-  const buildManual = () => { if (!updating && !manualCheck.error && !state.manualSpanPending && !state.manualFamilyPending) send({ type: 'build', params: state.manualDraft, origin: 'Параметры заданы вручную', evidence: null }); };
+  const buildManual = () => { if (!updating && !manualCheck.error && !state.manualSpanPending && !state.manualFamilyPending) send({ type: 'build', params: state.manualDraft, origin: 'Параметры заданы вручную', evidence: null, referencePhotos: referencePhotoManifest(referencePhotos.photos) }); };
   const photoHandoff = state.photoCycloidalHandoff, photoCountSeed = photoHandoff?.toothCountSeed;
   const photoCountStillCurrent = !!photoCountSeed && state.manualDraft.kind === 'cycloidal' && state.manualDraft.teeth === photoCountSeed.value;
   const photoModuleInference = photoHandoff?.moduleInference;
@@ -69,8 +73,9 @@ function Studio({ project }: { project: ProjectSession }) {
   const modelVisible = model && ['review', 'delivery', 'checkout'].includes(state.stage);
   const inputActive = state.stage === 'input', photoActive = inputActive && state.mode === 'photo';
   useGearTool(state.built?.params ?? state.manualDraft, params => {
+    if (project.busy) throw new Error('Дождитесь завершения обработки фото.');
     send({ type: 'choose-input', mode: 'manual' }); send({ type: 'clear-manual-span' }); send({ type: 'edit-manual', params }); send({ type: 'clear-manual-family', method: 'webmcp' });
-    send({ type: 'build', params, origin: 'Параметры заданы через инструмент конструктора', evidence: null });
+    send({ type: 'build', params, origin: 'Параметры заданы через инструмент конструктора', evidence: null, referencePhotos: referencePhotoManifest(referencePhotos.photos) });
   });
 
   return <div className="studio studio-v5 studio-v6">
@@ -111,6 +116,7 @@ function Studio({ project }: { project: ProjectSession }) {
           <div className="journey-form">
             <div hidden={state.mode !== 'manual'}>
               {photoHandoffNotice && <p className="family-notice" role="status">{photoHandoffNotice}</p>}
+              <ReferencePhotos controller={referencePhotos} active={inputActive && state.mode === 'manual'} disabled={project.busy} />
               <ParameterEditor active={inputActive && state.mode === 'manual'} params={state.manualDraft} onChange={change} onKind={selectKind}
                 onHand={hand => edit({ ...state.manualDraft, wormHand: hand })} onReset={() => edit(defaultModel(state.manualDraft.kind))} onReference={() => setReference(true)}
                 familyAssistant={<FamilyAssistant active={inputActive && state.mode === 'manual'} source="manual" application={state.manualFamily} engaged={state.manualFamilyPending || !!state.manualFamily}
@@ -121,7 +127,7 @@ function Studio({ project }: { project: ProjectSession }) {
               <div className="manual-build-status" aria-live="polite">{state.manualFamilyPending ? <p>Ответы о типе ещё не применены. Завершите помощник или вернитесь в нём к прямому выбору типа.</p> : state.manualSpanPending ? <p>Измерения ещё не применены. Завершите помощник или выберите в нём прямой ввод параметров.</p> : updating ? <p>Проверяем параметры…</p> : manualCheck.error ? <p className="inline-error" role="alert">{manualCheck.error}</p> : <p><Check size={17} /> Параметры можно использовать для построения.</p>}</div>
               <button className="primary-button full build-model-button" disabled={state.manualFamilyPending || state.manualSpanPending || updating || !!manualCheck.error} onClick={buildManual}>Построить модель <ArrowRight size={20} /></button>
             </div>
-            <div hidden={state.mode !== 'photo'}><PhotoWizard active={photoActive} onDraftChange={() => send({ type: 'edit-photo' })} onApply={(params, origin, evidence) => send({ type: 'build', params: { ...defaultModel(params.kind), ...params }, origin, evidence })} onManual={(kind, handoff) => {
+            <div hidden={state.mode !== 'photo'}><PhotoWizard referencePhotos={referencePhotos} active={photoActive} onDraftChange={() => send({ type: 'edit-photo' })} onApply={(params, origin, evidence) => send({ type: 'build', params: { ...defaultModel(params.kind), ...params }, origin, evidence, referencePhotos: referencePhotoManifest(referencePhotos.photos) })} onManual={(kind, handoff) => {
               if (kind === 'cycloidal') send({ type: 'photo-to-manual-cycloidal', ...handoff });
               else { chooseInput('manual'); if (kind) selectKind(kind); }
             }}

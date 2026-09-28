@@ -5,6 +5,7 @@ import { spanApplicationMatches, type SpanApplication } from './spanMeasurement.
 import { familyApplicationMatches, type FamilyApplication } from './familyIdentification.ts';
 import type { MeasurementSource } from './photo-inference.ts';
 import { cycloidalPhotoInferenceMatches, type CycloidalPhotoModuleInference } from './cycloidalPhotoInference.ts';
+import type { referencePhotoManifest } from './referencePhotos.ts';
 
 export type JourneyStage = 'start' | 'input' | 'review' | 'delivery' | 'checkout';
 export type InputMode = 'manual' | 'photo';
@@ -52,7 +53,8 @@ export type JourneyAction =
   | { type: 'apply-manual-span'; application: SpanApplication }
   | { type: 'clear-manual-span' }
   | { type: 'edit-photo' }
-  | { type: 'build'; params: ModelParams; origin: string; evidence: unknown }
+  | { type: 'edit-reference-photos' }
+  | { type: 'build'; params: ModelParams; origin: string; evidence: unknown; referencePhotos?: ReturnType<typeof referencePhotoManifest> }
   | { type: 'confirm' }
   | { type: 'choose-delivery'; choice: DeliveryChoice }
   | { type: 'navigate'; stage: JourneyStage };
@@ -142,6 +144,7 @@ export function transitionJourney(s: JourneyState, action: JourneyAction): Journ
     case 'clear-manual-span':
       return s.manualSpan || s.manualSpanPending ? { ...changed(s), manualSpan: null, manualSpanPending: false } : s;
     case 'edit-photo': return s.mode === 'photo' ? changed(s) : s;
+    case 'edit-reference-photos': return s.mode ? changed(s) : s;
     case 'build': {
       if (s.stage !== 'input' || !s.mode) return s;
       if (s.mode === 'manual' && (s.manualFamilyPending || (s.manualFamily && !familyApplicationMatches(s.manualFamily, action.params.kind))))
@@ -184,7 +187,9 @@ export function transitionJourney(s: JourneyState, action: JourneyAction): Journ
         } : action;
         const built: BuiltModel = { revision: s.revision, mode: s.mode,
           params: structuredClone(mesh.params), mesh, validation,
-          origin: provenance.origin, evidence: structuredClone(provenance.evidence) };
+          origin: provenance.origin, evidence: structuredClone(action.referencePhotos?.photos.length ? {
+            ...(provenance.evidence && typeof provenance.evidence === 'object' ? provenance.evidence : {}), supportingPhotos: action.referencePhotos,
+          } : provenance.evidence) };
         return { ...s, stage: 'review', built, confirmedRevision: null, choice: null, error: null };
       } catch (e) {
         return { ...s, built: null, confirmedRevision: null, choice: null,

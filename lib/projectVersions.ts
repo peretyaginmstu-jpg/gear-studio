@@ -96,6 +96,16 @@ function comparisonValue(params: ModelParams, key: keyof ModelParams): unknown {
   if (key === 'wormHand') return 'right';
   return undefined;
 }
+/** Validation can reorder object fields; property order is not a change in the user's data. */
+function sameData(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (!a || !b || typeof a !== 'object' || typeof b !== 'object') return false;
+  if (Array.isArray(a) || Array.isArray(b))
+    return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((value, index) => sameData(value, b[index]));
+  const before = a as Record<string, unknown>, after = b as Record<string, unknown>, keys = Object.keys(before);
+  return keys.length === Object.keys(after).length && keys.every(key => Object.hasOwn(after, key) && sameData(before[key], after[key]));
+}
+
 export function compareProjectSnapshots(saved: ProjectSnapshot, current: ProjectSnapshot) {
   const before = snapshotParams(saved), after = snapshotParams(current);
   const changes = before && after ? (Object.keys(labels) as (keyof ModelParams)[])
@@ -105,6 +115,7 @@ export function compareProjectSnapshots(saved: ProjectSnapshot, current: Project
   return { changes, canCompareParams: !!before && !!after,
     modeChanged: saved.journey.mode !== current.journey.mode,
     photoChanged: saved.forms.photo?.values.image !== current.forms.photo?.values.image,
-    inputsChanged: JSON.stringify(saved.forms) !== JSON.stringify(current.forms),
+    referencePhotosChanged: !sameData(saved.forms.photoReferences?.values.photos ?? [], current.forms.photoReferences?.values.photos ?? []),
+    inputsChanged: !sameData(saved.forms, current.forms),
   };
 }

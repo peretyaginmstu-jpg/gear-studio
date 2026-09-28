@@ -48,6 +48,7 @@ export function ProjectHistory({ project, busy, error, onClose, onSave, onRestor
       </table></div> : <p>Геометрические параметры совпадают с текущей работой.</p> : <p>Сравнение параметров станет доступно после построения фото-модели или ввода ручных параметров. Черновики можно восстанавливать уже сейчас.</p>}
       {comparison.modeChanged && <p>Способ ввода отличается.</p>}
       {comparison.photoChanged && <p>Фотография отличается.</p>}
+      {comparison.referencePhotosChanged && <p>Дополнительные ракурсы или их заметки отличаются.</p>}
       {comparison.inputsChanged && <p>Ответы, измерения, настройки или шаг помощника отличаются.</p>}
       <p className="version-restore-note">Перед возвратом сохраним текущую работу отдельной версией. Построенную модель потребуется снова проверить перед получением файлов.</p>
       <div className="version-actions"><button type="button" className="secondary-button" disabled={busy || atLimit} onClick={() => onRestore(selected.id)}><RotateCcw size={16} /> Восстановить версию</button>
