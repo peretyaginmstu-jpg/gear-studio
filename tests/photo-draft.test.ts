@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { transitionPhotoToothCountDraft } from '../lib/photo-draft.ts';
+import { confirmedCycloidalPhotoToothCount, transitionPhotoToothCountDraft } from '../lib/photo-draft.ts';
 
 const draft = { teeth: '24', confirmed: true, damageHypothesisTransferred: true };
 
@@ -32,4 +32,15 @@ test('selecting the current kind does not invalidate the draft', () => {
   assert.deepEqual(transitionPhotoToothCountDraft('spur', 'spur', 'external_circular', draft), {
     ...draft, resetReason: null,
   });
+});
+
+test('cycloidal photo handoff accepts only a confirmed full count from an external straight wheel', () => {
+  assert.deepEqual(confirmedCycloidalPhotoToothCount({ kind: 'spur', teeth: '36', confirmed: true, source: 'drawing' }), { value: 36, source: 'drawing' });
+  for (const kind of ['helical', 'herringbone', 'internal', 'rack']) {
+    assert.equal(confirmedCycloidalPhotoToothCount({ kind, teeth: '36', confirmed: true, source: 'user_confirmation' }), null, `${kind} uses a different or unsupported geometry`);
+  }
+  assert.equal(confirmedCycloidalPhotoToothCount({ kind: 'spur', teeth: '36', confirmed: false, source: 'user_confirmation' }), null);
+  for (const teeth of ['', '5', '10.5', '251']) {
+    assert.equal(confirmedCycloidalPhotoToothCount({ kind: 'spur', teeth, confirmed: true, source: 'measurement' }), null, `${teeth || 'empty'} is not a supported complete count`);
+  }
 });

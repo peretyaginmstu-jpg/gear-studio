@@ -20,6 +20,7 @@ const stages: { stage: JourneyStage; title: string }[] = [
   { stage: 'input', title: 'Исходные данные' }, { stage: 'review', title: 'Проверка модели' },
   { stage: 'delivery', title: 'Получение' }, { stage: 'checkout', title: 'Оформление' },
 ];
+const photoCountSourceLabels = { user_confirmation: 'проверка пользователем', measurement: 'результаты измерений', drawing: 'чертёж или документация' } as const;
 
 export default function Home() {
   const { state, send } = useJourney(), heading = useRef<HTMLHeadingElement>(null);
@@ -42,6 +43,13 @@ export default function Home() {
   const chooseInput = (mode: InputMode) => send({ type: 'choose-input', mode });
   const navigate = (stage: JourneyStage) => send({ type: 'navigate', stage });
   const buildManual = () => { if (!updating && !manualCheck.error && !state.manualSpanPending && !state.manualFamilyPending) send({ type: 'build', params: state.manualDraft, origin: 'Параметры заданы вручную', evidence: null }); };
+  const photoHandoff = state.photoCycloidalHandoff, photoCountSeed = photoHandoff?.toothCountSeed;
+  const photoCountStillCurrent = !!photoCountSeed && state.manualDraft.kind === 'cycloidal' && state.manualDraft.teeth === photoCountSeed.value;
+  const photoHandoffNotice = photoHandoff ? photoCountSeed
+    ? photoCountStillCurrent
+      ? `Из фото-помощника перенесено проверенное полное число зубьев z=${photoCountSeed.value}. Источник: ${photoCountSourceLabels[photoCountSeed.source]}. Проверьте число и остальные параметры перед построением.`
+      : `В фото-помощнике было подтверждено z=${photoCountSeed.value} (${photoCountSourceLabels[photoCountSeed.source]}), а текущее z=${state.manualDraft.teeth} задано вручную. В паспорте будет отмечено, что перенесённое значение изменено.`
+    : `Фото-помощник не передал подтверждённое число зубьев. Проверьте текущее z=${state.manualDraft.teeth} по детали или чертежу: это не результат распознавания.` : null;
   const model = hasCurrentModel(state) ? state.built : null, checkout = checkoutSnapshot(state);
   const modelVisible = model && ['review', 'delivery', 'checkout'].includes(state.stage);
   const inputActive = state.stage === 'input', photoActive = inputActive && state.mode === 'photo';
@@ -86,6 +94,7 @@ export default function Home() {
         <div className="input-workspace">
           <div className="journey-form">
             <div hidden={state.mode !== 'manual'}>
+              {photoHandoffNotice && <p className="family-notice" role="status">{photoHandoffNotice}</p>}
               <ParameterEditor active={inputActive && state.mode === 'manual'} params={state.manualDraft} onChange={change} onKind={selectKind}
                 onHand={hand => edit({ ...state.manualDraft, wormHand: hand })} onReset={() => edit(defaultModel(state.manualDraft.kind))} onReference={() => setReference(true)}
                 familyAssistant={<FamilyAssistant active={inputActive && state.mode === 'manual'} source="manual" application={state.manualFamily} engaged={state.manualFamilyPending || !!state.manualFamily}
@@ -96,7 +105,10 @@ export default function Home() {
               <div className="manual-build-status" aria-live="polite">{state.manualFamilyPending ? <p>Ответы о типе ещё не применены. Завершите помощник или вернитесь в нём к прямому выбору типа.</p> : state.manualSpanPending ? <p>Измерения ещё не применены. Завершите помощник или выберите в нём прямой ввод параметров.</p> : updating ? <p>Проверяем параметры…</p> : manualCheck.error ? <p className="inline-error" role="alert">{manualCheck.error}</p> : <p><Check size={17} /> Параметры можно использовать для построения.</p>}</div>
               <button className="primary-button full build-model-button" disabled={state.manualFamilyPending || state.manualSpanPending || updating || !!manualCheck.error} onClick={buildManual}>Построить модель <ArrowRight size={20} /></button>
             </div>
-            <div hidden={state.mode !== 'photo'}><PhotoWizard active={photoActive} onDraftChange={() => send({ type: 'edit-photo' })} onApply={(params, origin, evidence) => send({ type: 'build', params: { ...defaultModel(params.kind), ...params }, origin, evidence })} onManual={kind => { chooseInput('manual'); if (kind) selectKind(kind); }}
+            <div hidden={state.mode !== 'photo'}><PhotoWizard active={photoActive} onDraftChange={() => send({ type: 'edit-photo' })} onApply={(params, origin, evidence) => send({ type: 'build', params: { ...defaultModel(params.kind), ...params }, origin, evidence })} onManual={(kind, toothCount) => {
+              if (kind === 'cycloidal') send({ type: 'photo-to-manual-cycloidal', toothCount });
+              else { chooseInput('manual'); if (kind) selectKind(kind); }
+            }}
               onManualFamily={application => { chooseInput('manual'); send({ type: 'apply-manual-family', application }); }} /></div>
             {state.error && <p className="inline-error" role="alert">{state.error}</p>}
           </div>

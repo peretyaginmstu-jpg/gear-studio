@@ -1,4 +1,5 @@
 import type { PhotoCandidateType } from './photo-analysis.ts';
+import type { MeasurementSource } from './photo-inference.ts';
 
 export type PhotoToothCountResetReason = 'wheel-rack-meaning' | 'photo-family-conflict' | null;
 
@@ -6,6 +7,23 @@ export interface PhotoToothCountDraft {
   teeth: string;
   confirmed: boolean;
   damageHypothesisTransferred: boolean;
+}
+
+export interface ConfirmedCycloidalPhotoToothCount {
+  value: number;
+  source: MeasurementSource;
+}
+
+/** Only a confirmed full count on an explicitly selected external straight wheel fits this kernel. */
+export function confirmedCycloidalPhotoToothCount(input: {
+  kind: string;
+  teeth: string;
+  confirmed: boolean;
+  source: MeasurementSource;
+}): ConfirmedCycloidalPhotoToothCount | null {
+  if (input.kind !== 'spur' || !input.confirmed) return null;
+  const value = Number(input.teeth);
+  return Number.isInteger(value) && value >= 6 && value <= 250 ? { value, source: input.source } : null;
 }
 
 function kindFamily(kind: string): 'external' | 'internal' | 'rack' | null {

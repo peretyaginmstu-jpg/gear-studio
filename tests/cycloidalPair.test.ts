@@ -181,7 +181,7 @@ test('additive v3 JSON owns both exact snapshots and a separately labelled nomin
   const first = p(), second = { ...initialPairMate(first), width: 8, bore: 6 }, expected = structuredClone({ first, second });
   const output = createPairAnalysisDocument({ first, second }, '2026-09-28T12:00:00.000Z');
   first.teeth = 30; second.width = 9;
-  assert.equal(output.schema, 'zatseplenie.pair-analysis.v3'); assert.equal(output.appVersion, '0.16.0');
+  assert.equal(output.schema, 'zatseplenie.pair-analysis.v3'); assert.equal(output.appVersion, '0.17.0');
   assert.deepEqual(output.input.first, expected.first); assert.deepEqual(output.input.second, expected.second);
   assert.equal(output.input.centerMode, 'nominal-reference-circles'); assert.equal(output.input.centerDistanceMm, null);
   assert.equal(output.report.cycloidalModels[1].parameters.width, 8); assert.equal(output.report.status, 'warning');

@@ -18,11 +18,11 @@ import { analyzeGearRegion, samePhotoRegion, normalizePhotoRegion, type PhotoReg
 import { PhotoRegionDialog } from './PhotoRegionDialog';
 import { buildPhotoClarificationPlan } from '@/lib/photoClarificationPlan';
 import { PhotoClarificationPlan } from './PhotoClarificationPlan';
-import { transitionPhotoToothCountDraft, type PhotoToothCountResetReason } from '@/lib/photo-draft';
+import { confirmedCycloidalPhotoToothCount, transitionPhotoToothCountDraft, type ConfirmedCycloidalPhotoToothCount, type PhotoToothCountResetReason } from '@/lib/photo-draft';
 
 type ApplyParams = Partial<ModelParams> & { kind: InferredGearKind };
 const inferredKinds: InferredGearKind[] = ['spur', 'helical', 'herringbone', 'internal', 'internal-helical', 'rack', 'helical-rack'];
-export function PhotoWizard({ onApply, onManual, onManualFamily, onDraftChange, active = true }: { onApply: (p: ApplyParams, source: string, evidence: unknown) => void; onManual: (kind?: ModelKind) => void;
+export function PhotoWizard({ onApply, onManual, onManualFamily, onDraftChange, active = true }: { onApply: (p: ApplyParams, source: string, evidence: unknown) => void; onManual: (kind?: ModelKind, toothCount?: ConfirmedCycloidalPhotoToothCount) => void;
   onManualFamily: (application: FamilyApplication) => void; onDraftChange: () => void; active?: boolean }) {
   const [step, setStep] = useState(0), stepHeading = useRef<HTMLHeadingElement>(null);
   const goStep = (next: number) => { setStep(next); requestAnimationFrame(() => { stepHeading.current?.focus({ preventScroll: true }); stepHeading.current?.scrollIntoView({ block: 'start' }); }); };
@@ -259,11 +259,17 @@ export function PhotoWizard({ onApply, onManual, onManualFamily, onDraftChange, 
       <Choice active={active && step === 2} id="photo-profile" label="Профиль по чертежу или измерениям" value={profile} onChange={v => editProfile(setProfile, v)} options={{ unknown: 'Не подтверждён', involute: 'Эвольвентный подтверждён', cycloidal: 'Циклоидальный подтверждён', other: 'Другой / специальный профиль' }} />
       {(profile === 'cycloidal' || profile === 'other') && <div className="expert-note" role="status">
         <p>{profile === 'cycloidal'
-          ? 'Вы указали циклоидальный профиль. Фото-помощник не подменяет его эвольвентой; откроем отдельную циклоидальную модель для ручной настройки.'
+          ? kind === 'spur'
+            ? 'Вы указали циклоидальный профиль. Доступное ядро строит внешнее прямозубое колесо; подтверждённое полное число зубьев перенесём в ручной шаблон. Модуль и производящую окружность проверьте отдельно.'
+            : `Циклоидальное ядро пока строит только внешнее прямозубое колесо. Сейчас выбран тип «${modelNames[kind as ModelKind] ?? kind}»; такую геометрию нельзя корректно подменить прямозубой моделью. Вернитесь к выбору типа или выберите «Другой / специальный профиль».`
           : 'Для специального профиля нужна отдельная геометрия. Фото-помощник не подменяет её эвольвентой. Выберите доступную модель вручную; фото и ответы сохранятся при возврате к помощнику.'}</p>
-        <button className="inline-link" onClick={() => onManual(profile === 'cycloidal' ? 'cycloidal' : undefined)}>
-          {profile === 'cycloidal' ? 'Продолжить с циклоидальной моделью' : 'Выбрать геометрию вручную'} <ArrowRight size={14} />
-        </button>
+        {profile === 'cycloidal' && kind !== 'spur'
+          ? <button className="inline-link" onClick={() => goStep(1)}><ArrowLeft size={14} /> Вернуться к выбору типа</button>
+          : <button className="inline-link" onClick={() => profile === 'cycloidal'
+            ? onManual('cycloidal', confirmedCycloidalPhotoToothCount({ kind, teeth, confirmed: confirmedTeeth, source }) ?? undefined)
+            : onManual()}>
+            {profile === 'cycloidal' ? 'Продолжить с циклоидальной моделью' : 'Выбрать геометрию вручную'} <ArrowRight size={14} />
+          </button>}
       </div>}
       {image && imageSize && supported && !rack && <PhotoScale key={`${imageSize.id}-${analysisRevision}-${kind}`} active={active && step === 2} image={image} width={imageSize.width} height={imageSize.height} internal={internal} isApplied={photoMeasurement !== null}
         onInvalidated={invalidatePhotoMeasurement} onMeasured={measurement => { onDraftChange(); invalidateSpan(); setPhotoMeasurement(measurement); setDiameter(String(measurement.result.diameterMm)); setDiameterMethod('tip_circle'); }} />}
