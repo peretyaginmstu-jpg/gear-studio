@@ -86,7 +86,7 @@ A separately sampled circular bore and one-tooth sector triangulation avoid zero
 
 ## Separate pair report
 
-The UI's `PairDialog` uses `pairAnalysis.ts` for ideal unloaded involute external, internal and rack pairs. It reports the given two parts, actual or calculated operating distance, compatibility, backlash, radial clearance and contact ratios with stated restrictions. Its JSON is separate from the single-part passport. Unsupported bevel, worm and cycloidal pairs return an explicit unsupported status, never an involute substitute. See `pair-analysis.md` for equations and limits.
+The UI's `PairDialog` uses `pairAnalysis.ts` for ideal unloaded involute external, internal and rack pairs. It reports the given two parts, actual or calculated operating distance, compatibility, backlash, radial clearance and contact ratios with stated restrictions. A separate bevel branch checks both built meshes, reciprocal tooth counts, outer modules, angles, pitch cones and face intervals along an assumed common generator. It always retains a warning: actual mounting, tooth phase, conjugacy, contact, backlash and interference remain unverified. All cylindrical report dimensions remain null for bevel. Worm, cycloidal and mixed bevel/cylindrical pairs return unsupported. The pair JSON v3 remains separate from the single-part passport v6. See `pair-analysis.md` for equations and limits.
 
 ## Straight bevel module
 

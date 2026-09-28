@@ -12,7 +12,7 @@ export interface ModelProvenance { origin: string; evidence: unknown }
 export function createModelPassport(mesh: ModelMesh, validation: MeshValidation, provenance: ModelProvenance,
   preset: ExportPreset | null = null) {
   return {
-    schema: 'zatseplenie.gear.v6', appVersion: '0.11.0', units: 'mm',
+    schema: 'zatseplenie.gear.v6', appVersion: '0.12.0', units: 'mm',
     origin: provenance.origin, evidence: provenance.evidence, parameters: mesh.params,
     artifact: { purpose: preset ? 'STL-export' : 'current-preview-model', preset,
       requestedQuality: preset ? exportPresets[preset].quality : null,

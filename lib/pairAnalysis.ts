@@ -1,9 +1,10 @@
-import { buildGearProfile, involute, type GearKind, type GearParams, type GearProfile } from './gearMath.ts';
-import type { ModelParams } from './model.ts';
+import { buildGearProfile, involute, validateMesh, type GearKind, type GearParams, type GearProfile, type MeshValidation } from './gearMath.ts';
+import { defaultModel, type ModelKind, type ModelParams } from './model.ts';
 import type { InternalCutterGeometry } from './generatedInternalRoot.ts';
+import { buildBevelMesh, type BevelDimensions, type BevelParams, type Point3 } from './bevelGeometry.ts';
 
 export type PairStatus = 'pass' | 'warning' | 'fail' | 'unsupported';
-export type PairFamily = 'external_cylindrical' | 'internal_cylindrical' | 'rack_pinion' | 'unsupported';
+export type PairFamily = 'external_cylindrical' | 'internal_cylindrical' | 'rack_pinion' | 'bevel_pitch_cones' | 'unsupported';
 export interface PairCheck { id: string; label: string; status: 'pass' | 'warning' | 'fail'; detail: string }
 export interface PairDimensions {
   /** Reference circles: sum for external, difference for internal, pinion radius for rack. */
@@ -30,8 +31,44 @@ export interface PairReport {
   assumptions: string[];
   sources: { title: string; url: string }[];
   profileGeometry: { part: number; parameters: GearParams; rootRadiusMm: number | null; activeInvoluteJoinRadiusMm: number | null; internalCutterGeometry: InternalCutterGeometry | null }[];
+  /** Only populated after BOTH bevel models and all cone compatibility checks succeed. */
+  bevelGeometry: BevelPairGeometry | null;
+  /** Individual model evidence, not proof of mutual contact; never contains mesh arrays. */
+  bevelModels: { part: number; parameters: BevelParams; dimensions: BevelDimensions; meshValidation: MeshValidation; quality: { flankSamples: number } }[];
 }
 export interface PairInput { first: ModelParams; second: ModelParams; centerDistanceMm?: number }
+
+export interface BevelPairGeometry {
+  scope: 'pitch-cone-and-face-interval-precheck';
+  firstPitchConeAngleDeg: number;
+  secondPitchConeAngleDeg: number;
+  shaftAngleDeg: number;
+  outerConeDistanceMm: number;
+  firstFaceIntervalMm: { start: number; end: number };
+  secondFaceIntervalMm: { start: number; end: number };
+  overlapStartMm: number;
+  overlapEndMm: number;
+  overlapLengthMm: number;
+  /** Magnitude of the nominal pitch-cone ratio |omega_first / omega_second|. */
+  ratio: number;
+  idealAssembly: {
+    assumption: 'common-apex-and-aligned-outer-pitch-cone-ends';
+    coordinateSystem: 'right-handed; first-axis=+Z; second-axis-in-XZ; millimetres';
+    apex: Point3;
+    firstAxis: Point3;
+    secondAxis: Point3;
+    commonGenerator: Point3;
+    overlapStart: Point3;
+    overlapEnd: Point3;
+    actualMountingVerified: false;
+    toothPhaseRad: null;
+  };
+  /** Requires a separate conjugate-surface/contact analysis and actual assembly. */
+  conjugacyVerified: false;
+  contactRatio: null;
+  backlashMm: null;
+  interferenceFree: null;
+}
 
 const DEG = Math.PI / 180;
 const supported: readonly string[] = ['spur', 'helical', 'herringbone', 'internal', 'internal-helical', 'rack', 'helical-rack'];
@@ -60,6 +97,142 @@ function gearParams(p: ModelParams): GearParams {
   };
 }
 
+/** Visible initial values only: the first model and its cone are never modified. */
+export function initialPairMate(first: ModelParams): ModelParams {
+  if (first.kind === 'bevel') return {
+    ...defaultModel('bevel'), teeth: first.bevelMateTeeth ?? first.teeth,
+    bevelMateTeeth: first.teeth, bevelShaftAngleDeg: first.bevelShaftAngleDeg ?? 90,
+    module: first.module, pressureAngleDeg: first.pressureAngleDeg,
+    width: first.width, backlash: first.backlash, bore: 0,
+  };
+  const helical = ['helical', 'herringbone', 'internal-helical', 'helical-rack'].includes(first.kind);
+  const kind: ModelKind = first.kind === 'herringbone' ? 'herringbone' : helical ? 'helical' : 'spur';
+  return {
+    ...defaultModel(kind),
+    teeth: internal(first) ? Math.max(18, Math.min(36, first.teeth - 12)) : rack(first) ? 24 : Math.min(250, first.teeth * 2),
+    module: first.module, pressureAngleDeg: first.pressureAngleDeg,
+    helixAngleDeg: helical ? first.helixAngleDeg * (internal(first) || rack(first) ? 1 : -1) : 0,
+    width: first.width, profileShift: 0, backlash: first.backlash, bore: 0,
+  };
+}
+
+/** Own the input snapshot and compute its report together; no stale preview report. */
+export function createPairAnalysisDocument(input: PairInput, createdAt = new Date().toISOString()) {
+  const snapshot = structuredClone(input);
+  const hasVisibleMate = supported.includes(snapshot.first.kind) || snapshot.first.kind === 'bevel';
+  const coneInput = snapshot.first.kind === 'bevel' || snapshot.second.kind === 'bevel';
+  return {
+    schema: 'zatseplenie.pair-analysis.v3', appVersion: '0.12.0', createdAt, units: 'mm',
+    input: {
+      first: snapshot.first, second: hasVisibleMate ? snapshot.second : null,
+      centerDistanceMm: hasVisibleMate && !coneInput ? snapshot.centerDistanceMm ?? null : null,
+      centerMode: !hasVisibleMate || coneInput ? 'not-applicable' : snapshot.centerDistanceMm === undefined ? 'calculated-from-profile-shifts' : 'user-specified',
+      // Preserve an API misuse for audit, without treating it as a bevel mounting dimension.
+      ...(coneInput && snapshot.centerDistanceMm !== undefined ? { rejectedCylindricalCenterDistanceMm: snapshot.centerDistanceMm } : {}),
+    },
+    report: analyzeGearPair(snapshot),
+  };
+}
+
+function analyzeBevelPair({ first, second, centerDistanceMm }: PairInput): PairReport {
+  const report: PairReport = {
+    status: 'warning', family: 'bevel_pitch_cones', dimensions: emptyDimensions(), checks: [],
+    profileGeometry: [], bevelModels: [], bevelGeometry: null,
+    assumptions: [
+      'Предпроверка делительных конусов и размеров двух прямозубых моделей со сферической эвольвентой. Совпадение конусов не доказывает сопряжённость их зубчатых поверхностей.',
+      'Для координат перекрытия условно совмещены апексы и внешние торцы делительных конусов. Q — расстояние от общего апекса вдоль общей образующей; интервал каждой детали [R − b, R].',
+      'Фактические монтажные расстояния, положение осей и фаза зубьев не заданы. Возможность идеального совмещения не подтверждает положение реальной сборки.',
+      'Используется собственная система зуба ha=mₑ, hf=1,25mₑ с пропорциональным уменьшением к апексу. Это не каталоговая геометрия Gleason, Klingelnberg или octoid.',
+      'Контактное отношение, пространственный боковой зазор, интерференция, прочность и ресурс не рассчитаны. Утонение отдельных зубьев не приравнивается к зазору пары.',
+    ],
+    sources: [
+      { title: 'KHK — §4.4, геометрия делительных конусов', url: 'https://khkgears.net/gear-knowledge/gear-technical-reference/calculation-gear-dimensions/' },
+      { title: 'Ligata & Zhang — Geometry Definition and Contact Analysis of Spherical Involute Straight Bevel Gears (2011)', url: 'https://ijme.us/cd_11/PDF/Paper%20163%20ENG%20107.pdf' },
+      { title: 'Kolivand — Surface and Contact Lines Calculation (2014), DOI 10.4271/2014-01-1765', url: 'https://saemobilus.sae.org/papers/involute-straight-bevel-gear-surface-contact-lines-calculation-utilizing-ease-off-topography-approach-2014-01-1765' },
+    ],
+  };
+  const add = (id: string, label: string, status: PairCheck['status'], detail: string) => report.checks.push({ id, label, status, detail });
+  const finish = () => {
+    report.status = report.checks.some(check => check.status === 'fail') ? 'fail' : 'warning';
+    return report;
+  };
+  if (first.kind !== 'bevel' || second.kind !== 'bevel') {
+    report.family = 'unsupported'; report.status = 'unsupported';
+    add('unsupported', 'Эта пара пока не рассчитывается', 'warning', 'Предпроверка конусов требует двух прямозубых конических моделей со сферической эвольвентой. Смешанная пара с цилиндрическим, червячным или другим профилем не подменяется такой моделью.');
+    return report;
+  }
+  if (centerDistanceMm !== undefined)
+    add('bevel-center-not-applicable', 'Монтажные данные', 'fail', 'Цилиндрическое межосевое расстояние a неприменимо к этой предпроверке. Она использует угол осей и условный общий апекс; фактическая посадка отдельно не задана.');
+
+  // Building and validating both meshes also exercises the kernel's sampling/resource gates.
+  // Keep only compact evidence; this mesh density is not an export package or accuracy class.
+  const quality = { flankSamples: 6 };
+  for (const [index, input] of [first, second].entries()) {
+    try {
+      const params: BevelParams = {
+        kind: 'bevel', teeth: input.teeth, module: input.module, pressureAngleDeg: input.pressureAngleDeg,
+        width: input.width, bore: input.bore, backlash: input.backlash,
+        profileShift: input.profileShift, helixAngleDeg: input.helixAngleDeg,
+        profileTolerance: input.profileTolerance, bevelMateTeeth: input.bevelMateTeeth,
+        bevelShaftAngleDeg: input.bevelShaftAngleDeg,
+      };
+      const mesh = buildBevelMesh(params, quality), validation = validateMesh(mesh);
+      report.bevelModels.push({ part: index + 1, parameters: mesh.params, dimensions: mesh.bevelDimensions, meshValidation: validation, quality: { ...quality } });
+      add(`bevel-model-${index + 1}`, `Коническая модель ${index + 1}`, validation.valid ? 'pass' : 'fail', validation.valid
+        ? `Аналитический профиль и замкнутая сетка построены: ${validation.triangles} треугольников. Это проверка отдельной модели, не контакта пары.`
+        : 'Сетка отдельной модели не прошла проверку замкнутости, ориентации или ненулевого объёма.');
+      for (const warning of mesh.warnings.filter(item => item.code === 'BEVEL_WIDE_FACE'))
+        add(`bevel-model-${index + 1}-${warning.code}`, `Ширина детали ${index + 1}`, 'warning', warning.message);
+    } catch (error) {
+      add(`bevel-model-${index + 1}`, `Коническая модель ${index + 1}`, 'fail', error instanceof Error ? error.message : 'Не удалось построить коническую модель.');
+    }
+  }
+  if (report.bevelModels.length !== 2) return finish();
+  const [model1, model2] = report.bevelModels, p1 = model1.parameters, p2 = model2.parameters;
+  const d1 = model1.dimensions, d2 = model2.dimensions;
+  const mutualTeeth = d1.mateTeeth === p2.teeth && d2.mateTeeth === p1.teeth;
+  add('bevel-mutual-teeth', 'Числа зубьев ответных колёс', mutualTeeth ? 'pass' : 'fail',
+    `Первая модель построена для z₂=${d1.mateTeeth}, введено z₂=${p2.teeth}; вторая рассчитана для z₁=${d2.mateTeeth}, у первой z₁=${p1.teeth}. При изменении партнёра перестройте первую модель с новым z₂: её готовый конус здесь не меняется.`);
+  add('bevel-outer-module', 'Внешний модуль', same(p1.module, p2.module) ? 'pass' : 'fail', `mₑ₁=${fmt(p1.module)} мм; mₑ₂=${fmt(p2.module)} мм.`);
+  add('bevel-pressure-angle', 'Угол профиля', same(p1.pressureAngleDeg, p2.pressureAngleDeg) ? 'pass' : 'fail', `α₁=${fmt(p1.pressureAngleDeg)}°; α₂=${fmt(p2.pressureAngleDeg)}°. Совпадение этих параметров не заменяет проверку сопряжённых поверхностей.`);
+  add('bevel-shaft-angle', 'Угол между осями', same(d1.shaftAngleDeg, d2.shaftAngleDeg) ? 'pass' : 'fail', `Σ₁=${fmt(d1.shaftAngleDeg)}°; Σ₂=${fmt(d2.shaftAngleDeg)}°.`);
+  const angleSum = d1.pitchConeAngleDeg + d2.pitchConeAngleDeg;
+  const conesMatch = same(angleSum, d1.shaftAngleDeg) && same(angleSum, d2.shaftAngleDeg)
+    && same(d1.matePitchConeAngleDeg, d2.pitchConeAngleDeg) && same(d2.matePitchConeAngleDeg, d1.pitchConeAngleDeg);
+  add('bevel-angle-sum', 'Согласование углов конусов', conesMatch ? 'pass' : 'fail', `δ₁=${fmt(d1.pitchConeAngleDeg)}°; δ₂=${fmt(d2.pitchConeAngleDeg)}°; сумма ${fmt(angleSum)}° должна совпадать с обоими Σ.`);
+  add('bevel-outer-distance', 'Внешнее конусное расстояние', same(d1.outerConeDistance, d2.outerConeDistance) ? 'pass' : 'fail', `R₁=${fmt(d1.outerConeDistance)} мм; R₂=${fmt(d2.outerConeDistance)} мм. Для общего внешнего делительного сечения расстояния должны совпадать.`);
+  if (report.checks.some(check => check.status === 'fail')) return finish();
+
+  const start = Math.max(d1.innerConeDistance, d2.innerConeDistance), end = Math.min(d1.outerConeDistance, d2.outerConeDistance);
+  if (!(end > start)) {
+    add('bevel-face-overlap', 'Перекрытие вдоль образующей', 'fail', 'Интервалы обеих моделей вдоль общей образующей не имеют положительной общей длины.');
+    return finish();
+  }
+  const delta = d1.pitchConeAngleDeg * DEG, sigma = d1.shaftAngleDeg * DEG;
+  const generator = { x: Math.sin(delta), y: 0, z: Math.cos(delta) };
+  const pointAt = (q: number): Point3 => ({ x: q * generator.x, y: 0, z: q * generator.z });
+  report.bevelGeometry = {
+    scope: 'pitch-cone-and-face-interval-precheck', firstPitchConeAngleDeg: d1.pitchConeAngleDeg,
+    secondPitchConeAngleDeg: d2.pitchConeAngleDeg, shaftAngleDeg: d1.shaftAngleDeg,
+    outerConeDistanceMm: d1.outerConeDistance,
+    firstFaceIntervalMm: { start: d1.innerConeDistance, end: d1.outerConeDistance },
+    secondFaceIntervalMm: { start: d2.innerConeDistance, end: d2.outerConeDistance },
+    overlapStartMm: start, overlapEndMm: end, overlapLengthMm: end - start, ratio: p2.teeth / p1.teeth,
+    idealAssembly: {
+      assumption: 'common-apex-and-aligned-outer-pitch-cone-ends',
+      coordinateSystem: 'right-handed; first-axis=+Z; second-axis-in-XZ; millimetres',
+      apex: { x: 0, y: 0, z: 0 }, firstAxis: { x: 0, y: 0, z: 1 },
+      secondAxis: { x: Math.sin(sigma), y: 0, z: Math.cos(sigma) }, commonGenerator: generator,
+      overlapStart: pointAt(start), overlapEnd: pointAt(end), actualMountingVerified: false, toothPhaseRad: null,
+    },
+    conjugacyVerified: false, contactRatio: null, backlashMm: null, interferenceFree: null,
+  };
+  add('bevel-face-overlap', 'Перекрытие вдоль общей образующей', 'pass', `При условном совмещении апексов: Q от ${fmt(start)} до ${fmt(end)} мм; длина ${fmt(end - start)} мм. Это общая часть ширины моделей, не контактное отношение зубьев.`);
+  add('bevel-apex-assumption', 'Апекс и реальный монтаж', 'warning', 'Размеры допускают идеальное совмещение делительных конусов в общем апексе. Монтажные расстояния, положение осей и фаза реальной сборки не проверены.');
+  add('bevel-contact-unverified', 'Контакт поверхностей не проверен', 'warning', 'Согласованы только перечисленные условия конусов. Сопряжённость двух сферических эвольвент, линии контакта, зазор и интерференция требуют отдельного пространственного расчёта; их значения оставлены null.');
+  return finish();
+}
+
 /** Monotone inverse on [0, pi/2); all angles in radians. */
 function inverseInvolute(value: number): number {
   let low = 0, high = Math.PI / 2 - 1e-8;
@@ -77,9 +250,10 @@ function inverseInvolute(value: number): number {
  * Generated internal spur joins bound active contact; no strength or assembly certification.
  */
 export function analyzeGearPair({ first, second, centerDistanceMm }: PairInput): PairReport {
+  if (first.kind === 'bevel' || second.kind === 'bevel') return analyzeBevelPair({ first, second, centerDistanceMm });
   const dimensions = emptyDimensions(), checks: PairCheck[] = [];
   const report: PairReport = {
-    status: 'pass', family: 'unsupported', dimensions, checks, profileGeometry: [],
+    status: 'pass', family: 'unsupported', dimensions, checks, profileGeometry: [], bevelGeometry: null, bevelModels: [],
     assumptions: [
       'Идеальная геометрия без нагрузки; оси параллельны, общая ширина полностью совмещена и фаза зубьев настроена.',
       'Уменьшение нормальной толщины задано отдельно для каждой детали. Рассчитанный поперечный зазор не является допуском изготовления.',
@@ -108,7 +282,7 @@ export function analyzeGearPair({ first, second, centerDistanceMm }: PairInput):
     return report;
   };
   if (!supported.includes(first.kind) || !supported.includes(second.kind))
-    return unsupportedPair('Расчёт предназначен для эвольвентных цилиндрических колёс и реек. Для конического, червячного и циклоидального зацепления требуется отдельная модель пары.');
+    return unsupportedPair('Расчёт предназначен для эвольвентных цилиндрических колёс и реек; для двух конических моделей доступна отдельная предпроверка конусов. Червячное и циклоидальное зацепление пока не рассчитывается.');
   if ((rack(first) && rack(second)) || (internal(first) && internal(second)) ||
       (rack(first) && internal(second)) || (internal(first) && rack(second)))
     return unsupportedPair('Поддерживаются два наружных колеса, наружное с внутренним либо наружное колесо с рейкой.');

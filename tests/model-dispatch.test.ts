@@ -79,12 +79,18 @@ test('bevel bore wall uses the small root and the physical axial envelope contro
   assert.equal(tooShort.checks.find(check => check.id === 'bed')?.status, 'fail');
 });
 
-test('bevel never enters the cylindrical pair solver or receives calculated pair dimensions', () => {
+test('bevel never enters the cylindrical pair solver; only two bevel models receive cone precheck dimensions', () => {
   const bevel = defaultModel('bevel'), spur = defaultModel('spur');
-  for (const [first, second] of [[bevel, spur], [spur, bevel], [bevel, bevel]]) {
+  for (const [first, second] of [[bevel, spur], [spur, bevel]]) {
     const report = analyzeGearPair({ first, second });
     assert.equal(report.status, 'unsupported'); assert.equal(report.family, 'unsupported');
     assert.ok(Object.values(report.dimensions).every(value => value === null));
-    assert.match(report.checks[0].detail, /конического/);
+    assert.equal(report.bevelGeometry, null); assert.deepEqual(report.profileGeometry, []);
+    assert.match(report.checks[0].detail, /конических моделей/);
   }
+  const cones = analyzeGearPair({ first: bevel, second: bevel });
+  assert.equal(cones.status, 'warning'); assert.equal(cones.family, 'bevel_pitch_cones');
+  assert.ok(cones.bevelGeometry); assert.equal(cones.bevelGeometry.contactRatio, null);
+  assert.ok(Object.values(cones.dimensions).every(value => value === null));
+  assert.deepEqual(cones.profileGeometry, []);
 });
