@@ -95,3 +95,7 @@ The UI's `PairDialog` uses `pairAnalysis.ts` for ideal unloaded involute externa
 The tooth ends are back cones; the core ends inside the root circles are flat. The true cylinder bore stays constant. The large flat end lies at world z=0; apex and reflection/translation are recorded alongside the spatial end contours. FDM uses the small-end tip chord and root-to-bore wall. The diagram tab is an XY projection, not a manufacturing section. The outer reference-sphere base circle is named separately; cylindrical base diameter/pitch are not applicable.
 
 Analytic interpolation bounds cover the spherical flank and conical caps before Float32 rounding. Tests independently check rolling-plane coordinates, pressure angle from the tangent, cone sections, both pitch cones, watertight oriented STL, root seams, bore, faceted volume and convergence to integrated analytic volume. See [full formulas, sources, supported domain and tests](bevel-geometry.md). No octoid/Gleason/spiral geometry, generated root fillet, working pair contact or strength certificate is claimed.
+
+## Циклоидальная пара v0.13
+
+Две внешние циклоидальные модели имеют отдельную [ограниченную предпроверку](cycloidal-pair.md): общая производящая окружность, номинальное расстояние, построимость обеих сеток и верхняя граница покрытия шага конечными боковинами. Согласование остаётся предупреждением, контактное отношение и реальная интерференция не вычисляются. Одиночные профили и экспорт STL не изменены.

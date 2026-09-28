@@ -2,9 +2,10 @@ import { buildGearProfile, involute, validateMesh, type GearKind, type GearParam
 import { defaultModel, type ModelKind, type ModelParams } from './model.ts';
 import type { InternalCutterGeometry } from './generatedInternalRoot.ts';
 import { buildBevelMesh, type BevelDimensions, type BevelParams, type Point3 } from './bevelGeometry.ts';
+import { analyzeCycloidalPair, type CycloidalPairGeometry, type CycloidalPairModel } from './cycloidalPair.ts';
 
 export type PairStatus = 'pass' | 'warning' | 'fail' | 'unsupported';
-export type PairFamily = 'external_cylindrical' | 'internal_cylindrical' | 'rack_pinion' | 'bevel_pitch_cones' | 'unsupported';
+export type PairFamily = 'external_cylindrical' | 'internal_cylindrical' | 'rack_pinion' | 'bevel_pitch_cones' | 'external_cycloidal' | 'unsupported';
 export interface PairCheck { id: string; label: string; status: 'pass' | 'warning' | 'fail'; detail: string }
 export interface PairDimensions {
   /** Reference circles: sum for external, difference for internal, pinion radius for rack. */
@@ -35,6 +36,9 @@ export interface PairReport {
   bevelGeometry: BevelPairGeometry | null;
   /** Individual model evidence, not proof of mutual contact; never contains mesh arrays. */
   bevelModels: { part: number; parameters: BevelParams; dimensions: BevelDimensions; meshValidation: MeshValidation; quality: { flankSamples: number } }[];
+  /** Nominal diagnostic bounds may remain present with a continuity failure. */
+  cycloidalGeometry: CycloidalPairGeometry | null;
+  cycloidalModels: CycloidalPairModel[];
 }
 export interface PairInput { first: ModelParams; second: ModelParams; centerDistanceMm?: number }
 
@@ -99,6 +103,12 @@ function gearParams(p: ModelParams): GearParams {
 
 /** Visible initial values only: the first model and its cone are never modified. */
 export function initialPairMate(first: ModelParams): ModelParams {
+  if (first.kind === 'cycloidal') return {
+    ...defaultModel('cycloidal'), teeth: Math.min(250, first.teeth * 2),
+    module: first.module, pressureAngleDeg: first.pressureAngleDeg,
+    cycloidRollingRadius: first.cycloidRollingRadius ?? Math.min(2 * first.module, first.module * first.teeth / 4),
+    width: first.width, backlash: first.backlash, bore: 0,
+  };
   if (first.kind === 'bevel') return {
     ...defaultModel('bevel'), teeth: first.bevelMateTeeth ?? first.teeth,
     bevelMateTeeth: first.teeth, bevelShaftAngleDeg: first.bevelShaftAngleDeg ?? 90,
@@ -119,14 +129,17 @@ export function initialPairMate(first: ModelParams): ModelParams {
 /** Own the input snapshot and compute its report together; no stale preview report. */
 export function createPairAnalysisDocument(input: PairInput, createdAt = new Date().toISOString()) {
   const snapshot = structuredClone(input);
-  const hasVisibleMate = supported.includes(snapshot.first.kind) || snapshot.first.kind === 'bevel';
+  const hasVisibleMate = supported.includes(snapshot.first.kind) || snapshot.first.kind === 'bevel' || snapshot.first.kind === 'cycloidal';
   const coneInput = snapshot.first.kind === 'bevel' || snapshot.second.kind === 'bevel';
+  const cycloidalInput = snapshot.first.kind === 'cycloidal' || snapshot.second.kind === 'cycloidal';
   return {
-    schema: 'zatseplenie.pair-analysis.v3', appVersion: '0.12.0', createdAt, units: 'mm',
+    schema: 'zatseplenie.pair-analysis.v3', appVersion: '0.13.0', createdAt, units: 'mm',
     input: {
       first: snapshot.first, second: hasVisibleMate ? snapshot.second : null,
       centerDistanceMm: hasVisibleMate && !coneInput ? snapshot.centerDistanceMm ?? null : null,
-      centerMode: !hasVisibleMate || coneInput ? 'not-applicable' : snapshot.centerDistanceMm === undefined ? 'calculated-from-profile-shifts' : 'user-specified',
+      centerMode: !hasVisibleMate || coneInput ? 'not-applicable' : cycloidalInput
+        ? snapshot.centerDistanceMm === undefined ? 'nominal-reference-circles' : 'user-specified-for-nominal-precheck'
+        : snapshot.centerDistanceMm === undefined ? 'calculated-from-profile-shifts' : 'user-specified',
       // Preserve an API misuse for audit, without treating it as a bevel mounting dimension.
       ...(coneInput && snapshot.centerDistanceMm !== undefined ? { rejectedCylindricalCenterDistanceMm: snapshot.centerDistanceMm } : {}),
     },
@@ -137,7 +150,7 @@ export function createPairAnalysisDocument(input: PairInput, createdAt = new Dat
 function analyzeBevelPair({ first, second, centerDistanceMm }: PairInput): PairReport {
   const report: PairReport = {
     status: 'warning', family: 'bevel_pitch_cones', dimensions: emptyDimensions(), checks: [],
-    profileGeometry: [], bevelModels: [], bevelGeometry: null,
+    profileGeometry: [], bevelModels: [], bevelGeometry: null, cycloidalModels: [], cycloidalGeometry: null,
     assumptions: [
       'Предпроверка делительных конусов и размеров двух прямозубых моделей со сферической эвольвентой. Совпадение конусов не доказывает сопряжённость их зубчатых поверхностей.',
       'Для координат перекрытия условно совмещены апексы и внешние торцы делительных конусов. Q — расстояние от общего апекса вдоль общей образующей; интервал каждой детали [R − b, R].',
@@ -251,9 +264,10 @@ function inverseInvolute(value: number): number {
  */
 export function analyzeGearPair({ first, second, centerDistanceMm }: PairInput): PairReport {
   if (first.kind === 'bevel' || second.kind === 'bevel') return analyzeBevelPair({ first, second, centerDistanceMm });
+  if (first.kind === 'cycloidal' || second.kind === 'cycloidal') return analyzeCycloidalPair({ first, second, centerDistanceMm });
   const dimensions = emptyDimensions(), checks: PairCheck[] = [];
   const report: PairReport = {
-    status: 'pass', family: 'unsupported', dimensions, checks, profileGeometry: [], bevelGeometry: null, bevelModels: [],
+    status: 'pass', family: 'unsupported', dimensions, checks, profileGeometry: [], bevelGeometry: null, bevelModels: [], cycloidalGeometry: null, cycloidalModels: [],
     assumptions: [
       'Идеальная геометрия без нагрузки; оси параллельны, общая ширина полностью совмещена и фаза зубьев настроена.',
       'Уменьшение нормальной толщины задано отдельно для каждой детали. Рассчитанный поперечный зазор не является допуском изготовления.',
@@ -282,7 +296,7 @@ export function analyzeGearPair({ first, second, centerDistanceMm }: PairInput):
     return report;
   };
   if (!supported.includes(first.kind) || !supported.includes(second.kind))
-    return unsupportedPair('Расчёт предназначен для эвольвентных цилиндрических колёс и реек; для двух конических моделей доступна отдельная предпроверка конусов. Червячное и циклоидальное зацепление пока не рассчитывается.');
+    return unsupportedPair('Расчёт предназначен для эвольвентных цилиндрических колёс и реек; для конических и внешних циклоидальных колёс доступны отдельные предпроверки. Червячная пара пока не рассчитывается.');
   if ((rack(first) && rack(second)) || (internal(first) && internal(second)) ||
       (rack(first) && internal(second)) || (internal(first) && rack(second)))
     return unsupportedPair('Поддерживаются два наружных колеса, наружное с внутренним либо наружное колесо с рейкой.');
