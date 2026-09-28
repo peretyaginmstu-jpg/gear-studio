@@ -13,7 +13,7 @@ import { addProjectVersion, restoreProjectVersion, forkProjectVersion } from '@/
 import { ProjectHistory } from './ProjectHistory';
 
 type LoadedProject = { document: ProjectDocument; revision: number | null; restored: boolean; notice?: string; archivedAt?: string | null; focusProject?: boolean };
-export interface ProjectSession { initial: JourneyState | undefined; onJourney: (state: JourneyState) => void; controls: ReactNode; busy: boolean; archived: boolean }
+export interface ProjectSession { initial: JourneyState | undefined; onJourney: (state: JourneyState) => void; controls: ReactNode; busy: boolean; archived: boolean; name: string }
 type StudioComponent = ComponentType<{ project: ProjectSession }>;
 
 export function ProjectWorkspace({ component }: { component: StudioComponent }) {
@@ -252,7 +252,7 @@ function ProjectEditor({ loaded, activate, component: Studio }: { loaded: Loaded
           notice: 'Создан отдельный проект из выбранного варианта. История версий осталась в исходном проекте.' });
       }, setHistoryError); }} />}
   </section>;
-  return <ProjectContext.Provider value={drafts}><Studio project={{ initial, onJourney, controls, busy: busy || archived, archived }} /></ProjectContext.Provider>;
+  return <ProjectContext.Provider value={drafts}><Studio project={{ initial, onJourney, controls, busy: busy || archived, archived, name: name.trim() || 'Новая деталь' }} /></ProjectContext.Provider>;
 }
 
 function documentVisibility() { return window.document.visibilityState; }

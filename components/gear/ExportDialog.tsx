@@ -6,15 +6,18 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { modelNames, type ModelParams } from '@/lib/model';
 import { exportPresets, prepareModelExport, type ExportPreset, type ModelProvenance } from '@/lib/modelExport';
 import { downloadBlob } from '@/lib/download';
+import { modelDocumentInput, type ModelDocumentInput } from '@/lib/modelDocumentData';
+import { ExportDocuments } from './ExportDocuments';
 
-type Prepared = { url: string; filename: string; triangles: number; bytes: number; warnings: string[]; passport: string };
-export function ExportDialog({ open, onOpenChange, params, preset, origin, evidence }: {
+type Prepared = { url: string; filename: string; triangles: number; bytes: number; warnings: string[]; passport: string; documents: ModelDocumentInput };
+export function ExportDialog({ open, onOpenChange, params, preset, origin, evidence, projectName }: {
   open: boolean; onOpenChange: (v: boolean) => void; params: ModelParams; preset: ExportPreset;
+  projectName: string;
 } & ModelProvenance) {
-  return <Dialog open={open} onOpenChange={onOpenChange}>{open && <ExportContent key={`${preset}:${JSON.stringify(params)}:${origin}`} params={params} preset={preset} origin={origin} evidence={evidence} />}</Dialog>;
+  return <Dialog open={open} onOpenChange={onOpenChange}>{open && <ExportContent key={`${preset}:${JSON.stringify(params)}:${origin}:${projectName}`} params={params} preset={preset} origin={origin} evidence={evidence} projectName={projectName} />}</Dialog>;
 }
 /** Each opening/parameter set owns fresh acceptance and a single prepared file. */
-function ExportContent({ params, preset, origin, evidence }: { params: ModelParams; preset: ExportPreset } & ModelProvenance) {
+function ExportContent({ params, preset, origin, evidence, projectName }: { params: ModelParams; preset: ExportPreset; projectName: string } & ModelProvenance) {
   const [accepted, setAccepted] = useState(false);
   const [prepared, setPrepared] = useState<Prepared | null>(null);
   const [error, setError] = useState('');
@@ -23,15 +26,17 @@ function ExportContent({ params, preset, origin, evidence }: { params: ModelPara
     let url: string | null = null;
     const timer = setTimeout(() => {
       try {
-        const { mesh, validation: check, stl: bytes, passport } = prepareModelExport(params, preset, { origin, evidence });
+        const exported = prepareModelExport(params, preset, { origin, evidence });
+        const { mesh, validation: check, stl: bytes, passport } = exported;
         if (disposed) return;
         url = URL.createObjectURL(new Blob([bytes], { type: 'model/stl' }));
         const suffix = params.kind === 'worm' ? `starts${params.wormStarts ?? 1}` : `z${params.teeth}`;
-        setPrepared({ url, filename: `gear-${params.kind}-${suffix}-m${params.module.toFixed(3)}-${preset}.stl`, triangles: check.triangles, bytes: bytes.byteLength, warnings: mesh.warnings.map(w => w.message), passport: JSON.stringify(passport, null, 2) });
+        const filename = `gear-${params.kind}-${suffix}-m${params.module.toFixed(3)}-${preset}.stl`;
+        setPrepared({ url, filename, triangles: check.triangles, bytes: bytes.byteLength, warnings: mesh.warnings.map(w => w.message), passport: JSON.stringify(passport, null, 2), documents: modelDocumentInput(exported, filename, projectName) });
       } catch (e) { if (!disposed) setError(e instanceof Error ? e.message : 'Не удалось построить STL.'); }
     }, 20);
     return () => { disposed = true; clearTimeout(timer); if (url) { const old = url; setTimeout(() => URL.revokeObjectURL(old), 60_000); } };
-  }, [params, preset, origin, evidence]);
+  }, [params, preset, origin, evidence, projectName]);
   return <DialogContent className="engineering-dialog export-dialog">
     <DialogHeader><div className="dialog-kicker"><Download size={17} /> ЭКСПОРТ МОДЕЛИ</div><DialogTitle>{exportPresets[preset].title}</DialogTitle><DialogDescription>{modelNames[params.kind]} · {params.kind === 'bevel' ? 'внешний mₑ' : params.kind === 'worm' ? 'mₓ' : params.kind === 'cycloidal' ? 'm' : 'mₙ'} {params.module.toLocaleString('ru-RU', { maximumFractionDigits: 6 })} мм · {exportPresets[preset].detail}</DialogDescription></DialogHeader>
     <p>Бесплатно{preset === 'pro' ? ' в раннем доступе' : ''}. Импортируйте STL в миллиметрах. Паспорт ниже описывает именно этот файл и его фактическую сетку.</p>
@@ -42,5 +47,6 @@ function ExportContent({ params, preset, origin, evidence }: { params: ModelPara
     <label className="check-row"><Checkbox checked={accepted} onCheckedChange={v => setAccepted(v === true)} /><span>Условия модели понятны. Использую STL для пробного изготовления и проверки.</span></label>
     {prepared && accepted ? <a className="primary-button full" href={prepared.url} download={prepared.filename} data-testid="stl-download"><Download size={17} /> Скачать модель</a> : <button className="primary-button full" disabled><Download size={17} /> Скачать модель</button>}
     <button className="secondary-button full" disabled={!prepared} data-testid="export-passport" onClick={() => { if (prepared) downloadBlob(prepared.passport, 'application/json', prepared.filename.replace('.stl', '-passport.json')); }}><FileJson size={17} /> Паспорт этого STL</button>
+    {prepared && <ExportDocuments key={prepared.url} input={prepared.documents} accepted={accepted} />}
   </DialogContent>;
 }

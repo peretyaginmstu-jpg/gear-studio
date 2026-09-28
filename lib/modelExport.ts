@@ -5,7 +5,7 @@ import { APP_VERSION } from './appVersion.ts';
 export type ExportPreset = 'standard' | 'pro';
 export const exportPresets: Record<ExportPreset, { title: string; detail: string; quality: MeshQuality }> = {
   standard: { title: 'Standard STL', detail: 'Средняя детализация', quality: { flankSamples: 12 } },
-  pro: { title: 'Pro STL + паспорт', detail: 'Высокая детализация', quality: { flankSamples: 32 } },
+  pro: { title: 'Pro STL + документы', detail: 'Высокая детализация', quality: { flankSamples: 32 } },
 };
 export interface ModelProvenance { origin: string; evidence: unknown }
 
