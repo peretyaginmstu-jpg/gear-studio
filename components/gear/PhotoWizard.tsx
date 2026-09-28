@@ -16,6 +16,8 @@ import { FamilyAssistant } from './FamilyAssistant';
 import { familyApplicationMatches, type FamilyApplication } from '@/lib/familyIdentification';
 import { analyzeGearRegion, samePhotoRegion, normalizePhotoRegion, type PhotoRegion, type PhotoRegionEvidence } from '@/lib/photo-region';
 import { PhotoRegionDialog } from './PhotoRegionDialog';
+import { buildPhotoClarificationPlan } from '@/lib/photoClarificationPlan';
+import { PhotoClarificationPlan } from './PhotoClarificationPlan';
 
 type ApplyParams = Partial<ModelParams> & { kind: InferredGearKind };
 const inferredKinds: InferredGearKind[] = ['spur', 'helical', 'herringbone', 'internal', 'internal-helical', 'rack', 'helical-rack'];
@@ -149,6 +151,10 @@ export function PhotoWizard({ onApply, onManual, onManualFamily, onDraftChange, 
   };
   const result = useMemo(() => inferGearFromMeasurements(input), [input]);
   const spanPath = kind === 'spur' && (spanPending || spanApplication !== null);
+  const clarificationPlan = useMemo(() => buildPhotoClarificationPlan({ input, selectedKind: kind, enteredToothCount: teeth,
+    toothCountConfirmed: confirmedTeeth, familyReady, symmetricHerringbone: symmetric, analysisRegion: analysisEvidence,
+    span: kind === 'spur' && spanPending ? { mode: 'pending' } : kind === 'spur' && spanApplication ? { mode: 'applied', application: spanApplication } : { mode: 'direct' },
+  }), [input, kind, teeth, confirmedTeeth, familyReady, symmetric, analysisEvidence, spanPending, spanApplication]);
   const profileParameters = spanPath ? spanApplication?.candidate.parameters ?? null : result.status === 'ready' ? result.parameters : null;
   const calculatedModule = spanPath ? spanApplication?.candidate.parameters.module : result.calculation?.normalModuleMm;
   const bodyValid = width !== '' && Number(width) > 0 && body !== '' && (rack || internal ? Number(body) > 0 : Number(body) >= 0);
@@ -239,6 +245,7 @@ export function PhotoWizard({ onApply, onManual, onManualFamily, onDraftChange, 
     </section>
     <section hidden={step !== 2} aria-label="Масштаб и профиль">
       <p className="step-intro">Известный размер задаёт масштаб. Профиль и его углы берём из измерений или документации — по одному контуру их не определить.</p>
+      <PhotoClarificationPlan plan={clarificationPlan} active={active && step === 2} />
       <Choice active={active && step === 2} id="photo-profile" label="Профиль по чертежу или измерениям" value={profile} onChange={v => editProfile(setProfile, v)} options={{ unknown: 'Не подтверждён', involute: 'Эвольвентный подтверждён', other: 'Циклоидальный или другой' }} />
       {image && imageSize && supported && !rack && <PhotoScale key={`${imageSize.id}-${analysisRevision}-${kind}`} active={active && step === 2} image={image} width={imageSize.width} height={imageSize.height} internal={internal} isApplied={photoMeasurement !== null}
         onInvalidated={invalidatePhotoMeasurement} onMeasured={measurement => { onDraftChange(); invalidateSpan(); setPhotoMeasurement(measurement); setDiameter(String(measurement.result.diameterMm)); setDiameterMethod('tip_circle'); }} />}
