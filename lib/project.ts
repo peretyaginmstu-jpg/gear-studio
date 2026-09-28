@@ -9,6 +9,7 @@ import { estimatePhotoCircle, photoScaleSources } from './photo-scale.ts';
 import { cycloidalPhotoInferenceMatches, type CycloidalPhotoModuleInference } from './cycloidalPhotoInference.ts';
 import { assertPngDimensions, MAX_REFERENCE_PHOTOS, referencePhotosSchema } from './referencePhotos.ts';
 import { manufacturingDraftSchema } from './manufacturing.ts';
+import { layersFormSchema } from './layersLink.ts';
 import { sampleInspectionsSchema } from './sampleInspection.ts';
 
 export const PROJECT_SCHEMA = 'zatseplenie.project.v5';
@@ -117,6 +118,7 @@ const formSchemas: Record<string, z.ZodTypeAny> = { photo: photoForm, photoFamil
   photoReferences: z.object({ photos: referencePhotosSchema }).partial().strict(),
   manufacturing: z.object({ draft: manufacturingDraftSchema }).partial().strict(),
   inspections: z.object({ records: sampleInspectionsSchema }).partial().strict(),
+  layers: layersFormSchema,
   pair: z.object({ second: modelSchema, center: text }).partial().strict() };
 
 const handoff = z.object({ method: z.literal('confirmed-photo-cycloidal-handoff-v1'), selectedPhotoKind: z.literal('spur'), selectedProfile: z.literal('cycloidal'),

@@ -29,7 +29,7 @@ export function modelTitle(params: ModelParams): string {
  * history are not sent. The idempotency key depends only on the content, so a repeated click reuses
  * the same Layers draft instead of creating another one.
  */
-export async function prepareLayersDraft(input: LayersDraftInput) {
+export async function prepareLayersDraft(input: LayersDraftInput & { preferredMaterial?: string; referrer?: string }) {
   const exported = prepareModelExport(input.params, 'standard', { origin: input.origin, evidence: input.evidence, manufacturing: input.manufacturing });
   const stlSha256 = await sha256Hex(exported.stl);
   const suffix = input.params.kind === 'worm' ? `starts${input.params.wormStarts ?? 1}` : `z${input.params.teeth}`;
@@ -42,26 +42,34 @@ export async function prepareLayersDraft(input: LayersDraftInput) {
     stl: { name: stlName, sha256: stlSha256, bytes: exported.stl.byteLength, triangles: exported.validation.triangles, preset: 'standard' },
     manufacturing: manufacturingReport(exported.mesh, input.manufacturing),
     notVerified: exported.passport.notVerified,
+    ...(input.preferredMaterial ? { preferredMaterial: input.preferredMaterial.slice(0, 60) } : {}),
+    ...(input.referrer ? { referrer: input.referrer.slice(0, 30) } : {}),
   };
   const idempotencyKey = (await sha256Hex(`${stlSha256}:${JSON.stringify(manifest)}`)).slice(0, 48);
   return { stl: exported.stl, stlName, manifest, idempotencyKey };
 }
 
-/** Plain multipart POST (no custom headers → no CORS preflight); the token comes back in a URL fragment. */
+export interface SendOptions { revisionOf?: string; referrer?: string; bearer?: string | null }
+
+/** Multipart POST without cookies; the token comes back in a URL fragment. A signed-in account adds a Bearer header. */
 export async function sendLayersDraft(draft: Awaited<ReturnType<typeof prepareLayersDraft>>, baseUrl = layersUrl,
-  fetchImpl: typeof fetch = fetch): Promise<LayersDraftLink> {
+  fetchImpl: typeof fetch = fetch, options: SendOptions = {}): Promise<LayersDraftLink & { revisionFor?: string }> {
   baseUrl = baseUrl.replace(/\/+$/, '');
   if (!baseUrl) throw new Error('Адрес Layers не настроен.');
   const form = new FormData();
   form.append('stl', new Blob([draft.stl], { type: 'model/stl' }), draft.stlName);
   form.append('manifest', JSON.stringify(draft.manifest));
   form.append('idempotency_key', draft.idempotencyKey);
+  if (options.revisionOf) form.append('revision_of', options.revisionOf);
+  if (options.referrer) form.append('referrer', options.referrer);
+  const init: RequestInit = { method: 'POST', body: form, credentials: 'omit' };
+  if (options.bearer) init.headers = { Authorization: `Bearer ${options.bearer}` };
   let response: Response;
-  try { response = await fetchImpl(`${baseUrl}/api/v1/integrations/gear-studio/drafts`, { method: 'POST', body: form, credentials: 'omit' }); }
+  try { response = await fetchImpl(`${baseUrl}/api/v1/integrations/gear-studio/drafts`, init); }
   catch { throw new Error('Layers недоступен. Проверьте соединение и повторите; STL можно скачать и отправить вручную.'); }
-  const data = await response.json().catch(() => null) as { token?: string; expires_at?: string; order_url?: string; detail?: string } | null;
+  const data = await response.json().catch(() => null) as { token?: string; expires_at?: string; order_url?: string; detail?: string; revision_for?: string } | null;
   if (!response.ok || !data?.token || !data.order_url) throw new Error(data?.detail || `Layers отклонил модель (код ${response.status}).`);
   const url = new URL(data.order_url);
   if (url.origin !== new URL(baseUrl).origin || url.hash !== `#${data.token}`) throw new Error('Layers вернул неожиданную ссылку на заказ.');
-  return { token: data.token, expiresAt: data.expires_at ?? '', orderUrl: data.order_url };
+  return { token: data.token, expiresAt: data.expires_at ?? '', orderUrl: data.order_url, ...(data.revision_for ? { revisionFor: data.revision_for } : {}) };
 }

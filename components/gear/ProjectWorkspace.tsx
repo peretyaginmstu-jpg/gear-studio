@@ -11,6 +11,9 @@ import { downloadBlob } from '@/lib/download';
 import { ProjectContext, type ProjectDraftStore } from './ProjectContext';
 import { addProjectVersion, restoreProjectVersion, forkProjectVersion } from '@/lib/projectVersions';
 import { ProjectHistory } from './ProjectHistory';
+import { LayersAccount } from './LayersAccount';
+import { layersUrl, modelTitle } from '@/lib/layersOrder';
+import { captureReferrer, completeLayersLogin, draftManifest, rememberSyncedRevision } from '@/lib/layersLink';
 
 type LoadedProject = { document: ProjectDocument; revision: number | null; restored: boolean; notice?: string; archivedAt?: string | null; focusProject?: boolean };
 export interface ProjectSession { initial: JourneyState | undefined; onJourney: (state: JourneyState) => void; controls: ReactNode; busy: boolean; archived: boolean; name: string }
@@ -22,6 +25,10 @@ export function ProjectWorkspace({ component }: { component: StudioComponent }) 
     let cancelled = false;
     void (async () => {
       let next: LoadedProject;
+      captureReferrer();
+      const login = completeLayersLogin();
+      const fromLayers = await openLayersDraft();
+      if (fromLayers) { if (!cancelled) setLoaded(fromLayers); return; }
       try {
         const { activeId } = await listProjects();
         if (activeId) {
@@ -32,6 +39,7 @@ export function ProjectWorkspace({ component }: { component: StudioComponent }) 
         next = { document: newProject(), revision: null, restored: false,
           notice: `Не удалось открыть предыдущий проект. Его запись не изменена. ${error instanceof Error ? error.message : storageErrorMessage(error)}` };
       }
+      if (login) next = { ...next, notice: login === 'signed-in' ? 'Аккаунт Layers подключён: проекты можно хранить в нём, заказы привязываются к аккаунту.' : 'Вход через Layers не подтверждён. Попробуйте ещё раз из «Мои проекты».' };
       if (!cancelled) setLoaded(next);
     })();
     return () => { cancelled = true; };
@@ -39,6 +47,29 @@ export function ProjectWorkspace({ component }: { component: StudioComponent }) 
   const activate = useCallback((next: LoadedProject) => { setLoaded(next); setGeneration(value => value + 1); }, []);
   if (!loaded) return <main className="project-loading" aria-live="polite"><LoaderCircle size={25} className="project-spinner" /><h1>Открываем мастерскую</h1><p>Проверяем сохранённые на этом устройстве проекты…</p></main>;
   return <ProjectEditor key={`${loaded.document.id}-${generation}`} loaded={loaded} activate={activate} component={component} />;
+}
+
+/** #layers-draft=<токен>: модель заказа из админки Layers открывается отдельным проектом; ревизия пойдёт в тот же заказ. */
+async function openLayersDraft(): Promise<LoadedProject | null> {
+  const token = new URLSearchParams(window.location.hash.slice(1)).get('layers-draft');
+  if (!token) return null;
+  history.replaceState(null, '', window.location.pathname + window.location.search);
+  if (!layersUrl || !/^[A-Za-z0-9_-]{20,64}$/.test(token)) return null;
+  try {
+    const { manifest, order } = await draftManifest(token);
+    const doc = newProject();
+    doc.journey = { ...doc.journey, stage: 'input', mode: 'manual', manualDraft: manifest.model?.params as typeof doc.journey.manualDraft };
+    doc.forms = { layers: { identity: 'default', values: { links: [], revisionTarget: { token, orderCode: order?.code ?? null } } } };
+    const checked = parseProject(serializeProject(doc));
+    checked.name = (order ? `Заказ ${order.code}: ` : '') + (manifest.title || modelTitle(checked.journey.manualDraft));
+    checked.name = checked.name.slice(0, 120);
+    const revision = await writeProject(checked, null);
+    return { document: checked, revision, restored: true, focusProject: true,
+      notice: `Модель заказа ${order?.code ?? ''} открыта из Layers отдельным проектом. Измените параметры, постройте и проверьте модель — в оформлении появится «Ревизия в заказ».` };
+  } catch (error) {
+    return { document: newProject(), revision: null, restored: false,
+      notice: `Не удалось открыть модель из Layers: ${error instanceof Error ? error.message : 'ошибка'}. Текущие проекты не изменены.` };
+  }
 }
 
 function ProjectEditor({ loaded, activate, component: Studio }: { loaded: LoadedProject; activate: (value: LoadedProject) => void; component: StudioComponent }) {
@@ -227,6 +258,18 @@ function ProjectEditor({ loaded, activate, component: Studio }: { loaded: Loaded
       <DialogTitle>Мои проекты</DialogTitle><DialogDescription>Сохраняются в этом браузере. Для переноса на другое устройство и резервной копии скачайте файл проекта. Очистка данных сайта удалит локальные записи.</DialogDescription>
       <div className="project-library-views" role="group" aria-label="Раздел проектов">{(['working', 'archived'] as const).map(view => <button key={view} ref={libraryView === view ? libraryViewButton : undefined} type="button" disabled={busy} aria-pressed={libraryView === view} onClick={() => { setLibraryView(view); setLibraryError(null); }}>
         {view === 'working' ? `В работе · ${workingCount}` : `Архив · ${archivedCount}`}</button>)}</div>
+      <LayersAccount projectId={loaded.document.id} disabled={busy || archived}
+        serialize={async () => { if (!await flush()) { setLibraryError(failureMessage.current ?? 'Сначала сохраните текущую работу.'); return null; } return serializeProject(snapshot()); }}
+        openCloud={async (data, cloudRevision) => { await run(async () => {
+          const doc = parseProject(data);
+          if (!await flush()) return;
+          let local: number | null = null;
+          try { local = (await readProject(doc.id)).revision; } catch { local = null; }
+          const version = await writeProject({ ...doc, updatedAt: new Date().toISOString() }, local);
+          rememberSyncedRevision(doc.id, cloudRevision);
+          setLibraryOpen(false);
+          activate({ document: doc, revision: version, restored: true, notice: `Открыта версия ${cloudRevision} из аккаунта Layers.` });
+        }, setLibraryError); }} />
       <label className="project-search">Найти проект<input type="search" aria-label="Найти проект" value={search} onChange={event => setSearch(event.target.value)} placeholder="Название детали или заказа" /></label>
       {libraryError && <p role="alert" className="version-error">{libraryError}</p>}
       {libraryNotice && <p role="status" className="library-notice">{libraryNotice}</p>}

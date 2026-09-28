@@ -166,7 +166,8 @@ function Studio({ project }: { project: ProjectSession }) {
             <button className="primary-button full package-primary" disabled={!state.choice} onClick={() => navigate('checkout')}>Продолжить <ArrowRight size={20} /></button>
             <p className="delivery-note"><Info size={19} /> Плотность STL не меняет аналитический профиль и не является классом точности. Платежи пока не подключены.</p>
           </>}
-          {checkout && <CheckoutActions model={checkout.model} choice={checkout.choice} onChange={() => navigate('delivery')} projectName={project.name} />}
+          {checkout && <CheckoutActions model={checkout.model} choice={checkout.choice} onChange={() => navigate('delivery')} projectName={project.name}
+            onAdjustParams={params => { send({ type: 'choose-input', mode: 'manual' }); send({ type: 'clear-manual-span' }); send({ type: 'clear-manual-family' }); edit(params); }} />}
         </aside>
         <section className="engineering-panel"><ModelInspection model={model} onReference={() => setReference(true)} /></section>
       </div>}
