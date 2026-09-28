@@ -26,6 +26,9 @@ export function ModelSummary({ params }: { params: ModelParams }) {
           <div><dt>{isBevel ? 'Внешний модуль' : isWorm ? 'Осевой модуль' : isHelicalKind(params.kind) ? 'Нормальный модуль' : 'Модуль'}</dt><dd>{moduleSymbol}&nbsp; {fmt(params.module, 6)} мм</dd></div>
           <div><dt>{isBevel ? 'По образующей' : isWorm ? 'Длина нарезки' : 'Ширина'}</dt><dd>{isWorm ? 'L' : 'b'}&nbsp; {fmt(params.width)} мм</dd></div>
           <div><dt>{internal ? 'Обод' : rack ? 'Основание' : 'Отверстие'}</dt><dd>{!internal && !rack && '⌀ '}{fmt(internal ? params.rimThickness ?? 3 * params.module : rack ? params.rackBaseHeight ?? 3 * params.module : params.bore)} мм</dd></div>
+          {(params.keywayWidth ?? 0) > 0 && <div><dt>Шпоночный паз</dt><dd>b × t₂&nbsp; {fmt(params.keywayWidth ?? 0)} × {fmt(params.keywayDepth ?? 0)} мм</dd></div>}
+          {(params.hubLength ?? 0) > 0 && <div><dt>Ступица</dt><dd>⌀ {fmt(params.hubDiameter ?? 0)} × {fmt(params.hubLength ?? 0)} мм</dd></div>}
+          {((params.addendumCoefficient ?? 1) !== 1 || (params.clearanceCoefficient ?? .25) !== .25) && <div><dt>Исходный контур</dt><dd>ha* {fmt(params.addendumCoefficient ?? 1)} · c* {fmt(params.clearanceCoefficient ?? .25)}</dd></div>}
         </dl>
   );
 }

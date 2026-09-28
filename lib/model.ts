@@ -46,13 +46,18 @@ export function defaultModel(kind: ModelKind = 'spur'): ModelParams {
   };
 }
 
+export const cylindricalOnlyKeys = ['addendumCoefficient', 'clearanceCoefficient', 'keywayWidth', 'keywayDepth', 'hubDiameter', 'hubLength'] as const;
+
 export function buildModelMesh(input: ModelParams, quality: MeshQuality = {}): ModelMesh {
   // Each independent kernel receives only its own parameters.
   const { wormStarts, wormDiameterFactor, wormHand, cycloidRollingRadius, bevelMateTeeth, bevelShaftAngleDeg,
     internalCutterTeeth, internalCutterProfileShift, internalCutterAddendumCoefficient, internalCutterTipRadiusCoefficient, internalCutterThinning, ...gear } = input;
-  if (input.kind === 'worm') return buildWormMesh({ ...gear, wormStarts, wormDiameterFactor, wormHand } as WormParams, quality);
-  if (input.kind === 'cycloidal') return buildCycloidalMesh({ ...gear, cycloidRollingRadius } as CycloidalParams, quality);
-  if (input.kind === 'bevel') return buildBevelMesh({ ...gear, bevelMateTeeth, bevelShaftAngleDeg } as BevelParams, quality);
+  // Cylindrical-only extensions never reach kernels with their own tooth systems.
+  const shared = { ...gear };
+  for (const key of cylindricalOnlyKeys) delete shared[key];
+  if (input.kind === 'worm') return buildWormMesh({ ...shared, wormStarts, wormDiameterFactor, wormHand } as WormParams, quality);
+  if (input.kind === 'cycloidal') return buildCycloidalMesh({ ...shared, cycloidRollingRadius } as CycloidalParams, quality);
+  if (input.kind === 'bevel') return buildBevelMesh({ ...shared, bevelMateTeeth, bevelShaftAngleDeg } as BevelParams, quality);
   if (input.kind === 'internal') return buildGearMesh({ ...gear, internalCutterTeeth, internalCutterProfileShift,
     internalCutterAddendumCoefficient, internalCutterTipRadiusCoefficient, internalCutterThinning } as GearParams, quality);
   return buildGearMesh(gear as GearParams, quality);

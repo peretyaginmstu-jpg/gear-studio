@@ -77,13 +77,14 @@ test('rack volume agrees with independent base plus trapezoidal teeth',()=>{
 test('single helix obeys tan(beta)=r*dtheta/dz; left hand has opposite twist',()=>{
   for(const beta of [-25,25]) {
     const mesh=buildGearMesh(p({kind:'helical',helixAngleDeg:beta}));
-    const n=(mesh.profile.outer.length+(mesh.profile.hole?.length??0)),off=mesh.tessellation.axialSegments*n*3;
+    // External rims are stored ring by ring first; the straight bore prism follows them.
+    const n=mesh.profile.outer.length,off=mesh.tessellation.axialSegments*n*3;
     const a=Math.atan2(mesh.positions[1],mesh.positions[0]),b=Math.atan2(mesh.positions[off+1],mesh.positions[off]);
     close((b-a)/mesh.params.width*(mesh.dimensions.pitchDiameter/2),Math.tan(beta*Math.PI/180),1e-6);
   }
 });
 test('herringbone ends coincide in angle and middle has exactly half total helix twist',()=>{
-  const mesh=buildGearMesh(p({kind:'herringbone',helixAngleDeg:30})),n=mesh.profile.outer.length+(mesh.profile.hole?.length??0);
+  const mesh=buildGearMesh(p({kind:'herringbone',helixAngleDeg:30})),n=mesh.profile.outer.length;
   const end=mesh.tessellation.axialSegments*n*3,mid=end/2;
   const angle=(off:number)=>Math.atan2(mesh.positions[off+1],mesh.positions[off]);
   close(angle(0),angle(end),1e-7);close(angle(mid)-angle(0),mesh.dimensions.twistAngleDeg*Math.PI/360,1e-7);

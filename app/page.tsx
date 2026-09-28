@@ -118,7 +118,7 @@ function Studio({ project }: { project: ProjectSession }) {
             <div hidden={state.mode !== 'manual'}>
               {photoHandoffNotice && <p className="family-notice" role="status">{photoHandoffNotice}</p>}
               <ReferencePhotos controller={referencePhotos} active={inputActive && state.mode === 'manual'} disabled={project.busy} />
-              <ParameterEditor active={inputActive && state.mode === 'manual'} params={state.manualDraft} onChange={change} onKind={selectKind}
+              <ParameterEditor active={inputActive && state.mode === 'manual'} params={state.manualDraft} onChange={change} onPatch={patch => edit({ ...state.manualDraft, ...patch })} onKind={selectKind}
                 onHand={hand => edit({ ...state.manualDraft, wormHand: hand })} onReset={() => edit(defaultModel(state.manualDraft.kind))} onReference={() => setReference(true)}
                 familyAssistant={<FamilyAssistant active={inputActive && state.mode === 'manual'} source="manual" application={state.manualFamily} engaged={state.manualFamilyPending || !!state.manualFamily}
                   onDraftChange={() => send({ type: 'edit-manual-family' })} onApply={application => send({ type: 'apply-manual-family', application })} onCancel={() => send({ type: 'clear-manual-family' })} />} />

@@ -32,6 +32,8 @@ const diameterMethod = z.enum(['tip_circle', 'opposed_tips', 'unknown', 'uncorre
 const modelSchema = z.object({
   kind: modelKind, teeth: draftNumber, module: draftNumber, width: draftNumber, bore: draftNumber,
   pressureAngleDeg: draftNumber, helixAngleDeg: draftNumber, profileShift: draftNumber, backlash: draftNumber,
+  addendumCoefficient: draftNumber.optional(), clearanceCoefficient: draftNumber.optional(),
+  keywayWidth: draftNumber.optional(), keywayDepth: draftNumber.optional(), hubDiameter: draftNumber.optional(), hubLength: draftNumber.optional(),
   rimThickness: draftNumber.optional(), rackBaseHeight: draftNumber.optional(), toolTipRadiusCoefficient: draftNumber.optional(),
   profileTolerance: draftNumber.optional(), internalCutterTeeth: draftNumber.optional(), internalCutterProfileShift: draftNumber.optional(),
   internalCutterAddendumCoefficient: draftNumber.optional(), internalCutterTipRadiusCoefficient: draftNumber.optional(), internalCutterThinning: draftNumber.optional(),

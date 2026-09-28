@@ -69,7 +69,7 @@ export function deriveInternalCutter(p: GearParams): InternalCutterGeometry {
   const H = Math.sqrt((R / bc) ** 2 - 1), tc = H + rho / bc, A = sc / (2 * rc) + inv(alpha), psi = tc - A;
   const gamma = psi - Math.atan(H), center = rotate({ x: bc, y: -bc * H }, psi);
   if (!(A > 0 && A < PI / zc && gamma < -1e-8)) fail('INTERNAL_CUTTER_POINTED', 'Боковины или скруглённые вершины долбяка пересекаются: нет положительной площадки на вершине инструмента.');
-  const ra = r - m * (1 - p.profileShift), rf = a + rac;
+  const ra = r - m * ((p.addendumCoefficient ?? 1) - p.profileShift), rf = a + rac;
   if (!(ra >= rb && ra < rf)) fail('INTERNAL_CUTTER_RING_TIP', 'Вершина внутреннего колеса должна быть не ниже основной окружности и внутри фактического корня.');
   const tt = Math.sqrt((ra / rb) ** 2 - 1), tipToolRoll = (rb * tt - a * Math.sin(ag)) / bc;
   if (tipToolRoll < -1e-12) fail('INTERNAL_CUTTER_TIP_CONTACT', 'У вершины колеса контакт выходит ниже начала эвольвентной части долбяка. Его нижний переход здесь не задан; увеличьте число зубьев долбяка или измените исходные параметры. Это ограничение реализованного инструмента, а не доказательство подрезания.');
