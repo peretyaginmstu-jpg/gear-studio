@@ -1,14 +1,16 @@
 "use client";
+import type { ReactNode } from 'react';
 import { RotateCcw, SlidersHorizontal, ArrowUpRight } from 'lucide-react';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { isHelicalKind, isInternalKind, isRackKind, modelNames, type ModelKind, type ModelParams } from '@/lib/model';
 import { useActivePopup } from './useActivePopup';
 import { InternalCutterFields } from './InternalCutterFields';
 
-export function ParameterEditor({ active = true, params, onChange, onKind, onHand, onReset, onReference }: {
+export function ParameterEditor({ active = true, params, onChange, onKind, onHand, onReset, onReference, familyAssistant }: {
   active?: boolean; params: ModelParams; onChange: (key: keyof ModelParams, value: number) => void;
   onKind: (kind: ModelKind) => void; onHand: (hand: 'left' | 'right') => void;
   onReset: () => void; onReference: () => void;
+  familyAssistant?: ReactNode;
 }) {
   const helical = isHelicalKind(params.kind), rack = isRackKind(params.kind), internal = isInternalKind(params.kind);
   const worm = params.kind === 'worm', cycloidal = params.kind === 'cycloidal', bevel = params.kind === 'bevel';
@@ -19,6 +21,7 @@ export function ParameterEditor({ active = true, params, onChange, onKind, onHan
         <SelectContent>{Object.entries(modelNames).map(([kind, title]) => <SelectItem key={kind} value={kind}>{title}</SelectItem>)}</SelectContent></Select>
       <button className="family-help" onClick={onReference}>Область применения <ArrowUpRight size={14} /></button>
     </div>
+    {familyAssistant}
     <div className="input-grid editor-fields">
       {worm ? <NumberField label="Число заходов" symbol="z₁" value={params.wormStarts ?? 1} min={1} max={8} onChange={v => onChange('wormStarts', v)} />
         : <NumberField label="Число зубьев" symbol="z" value={params.teeth} min={rack ? 1 : 6} max={250} onChange={v => onChange('teeth', v)} />}

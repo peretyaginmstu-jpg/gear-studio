@@ -12,10 +12,13 @@ import { defaultInternalCutter } from '@/lib/generatedInternalRoot';
 import { InternalCutterFields, type InternalCutterInputs } from './InternalCutterFields';
 import { SpanMeasurementAssistant } from './SpanMeasurementAssistant';
 import type { SpanApplication, SpanMeasurementInput } from '@/lib/spanMeasurement';
+import { FamilyAssistant } from './FamilyAssistant';
+import { familyApplicationMatches, type FamilyApplication } from '@/lib/familyIdentification';
 
 type ApplyParams = Partial<ModelParams> & { kind: InferredGearKind };
 const inferredKinds: InferredGearKind[] = ['spur', 'helical', 'herringbone', 'internal', 'internal-helical', 'rack', 'helical-rack'];
-export function PhotoWizard({ onApply, onManual, onDraftChange, active = true }: { onApply: (p: ApplyParams, source: string, evidence: unknown) => void; onManual: () => void; onDraftChange: () => void; active?: boolean }) {
+export function PhotoWizard({ onApply, onManual, onManualFamily, onDraftChange, active = true }: { onApply: (p: ApplyParams, source: string, evidence: unknown) => void; onManual: () => void;
+  onManualFamily: (application: FamilyApplication) => void; onDraftChange: () => void; active?: boolean }) {
   const [step, setStep] = useState(0), stepHeading = useRef<HTMLHeadingElement>(null);
   const goStep = (next: number) => { setStep(next); requestAnimationFrame(() => { stepHeading.current?.focus({ preventScroll: true }); stepHeading.current?.scrollIntoView({ block: 'start' }); }); };
   const edit = <T,>(setter: (value: T) => void, value: T) => { onDraftChange(); setter(value); };
@@ -34,17 +37,34 @@ export function PhotoWizard({ onApply, onManual, onDraftChange, active = true }:
   const [internalCutter, setInternalCutter] = useState<InternalCutterInputs>({ ...defaultInternalCutter });
   const [source, setSource] = useState<MeasurementSource>('user_confirmation');
   const [spanApplication, setSpanApplication] = useState<SpanApplication | null>(null), [spanPending, setSpanPending] = useState(false);
+  const [familyApplication, setFamilyApplication] = useState<FamilyApplication | null>(null), [familyPending, setFamilyPending] = useState(false);
   const invalidateSpan = () => { if (spanApplication || spanPending) { setSpanApplication(null); setSpanPending(true); } };
   const editProfile = <T,>(setter: (value: T) => void, value: T) => { invalidateSpan(); edit(setter, value); };
   const supported = inferredKinds.includes(kind as InferredGearKind);
   const rack = supported && isRackKind(kind as InferredGearKind), internal = supported && isInternalKind(kind as InferredGearKind);
   const helical = supported && isHelicalKind(kind as InferredGearKind);
+  const familyReady = !familyPending && (!familyApplication || familyApplicationMatches(familyApplication, kind as ModelParams['kind']));
+  const setObservedKind = (next: string) => {
+    if (next === kind) return; // Reapplying the same classification must not destroy measurements.
+    setKind(next); setDiameter(''); setPitch(''); setDiameterMethod('unknown'); setBeta(''); setAlpha(''); setShift('');
+    setBody(''); setProfile('unknown'); setStandard(false); setSymmetric(false); setPhotoMeasurement(null); setConfirmedTeeth(false);
+    setSpanApplication(null); setSpanPending(false); setInternalCutter({ ...defaultInternalCutter });
+  };
+  const chooseDirectKind = (next: string) => {
+    onDraftChange(); setObservedKind(next); setFamilyApplication(null); setFamilyPending(false);
+  };
+  const applyFamily = (application: FamilyApplication) => {
+    onDraftChange(); setFamilyApplication(application); setFamilyPending(false);
+    if (application.decision.photoKind) setObservedKind(application.decision.photoKind);
+    else { setObservedKind('other'); onManualFamily(application); }
+  };
   const resetAnswers = () => {
     setKind('unknown'); setProfile('unknown'); setTeeth(''); setConfirmedTeeth(false); setDamageHypothesisTransferred(false); setDiameter(''); setPitch('');
     setDiameterMethod('unknown'); setBeta(''); setAlpha(''); setShift(''); setStandard(false); setSymmetric(false);
     setWidth(''); setBody(''); setSource('user_confirmation'); setPhotoMeasurement(null);
     setInternalCutter({ ...defaultInternalCutter });
     setSpanApplication(null); setSpanPending(false);
+    setFamilyApplication(null); setFamilyPending(false);
   };
   const loadFile = async (file?: File) => {
     if (!file) return;
@@ -109,7 +129,7 @@ export function PhotoWizard({ onApply, onManual, onDraftChange, active = true }:
   const profileParameters = spanPath ? spanApplication?.candidate.parameters ?? null : result.status === 'ready' ? result.parameters : null;
   const calculatedModule = spanPath ? spanApplication?.candidate.parameters.module : result.calculation?.normalModuleMm;
   const bodyValid = width !== '' && Number(width) > 0 && body !== '' && (rack || internal ? Number(body) > 0 : Number(body) >= 0);
-  const ready = supported && profileParameters !== null && bodyValid && confirmedTeeth && teeth !== '' && (kind !== 'herringbone' || symmetric);
+  const ready = familyReady && supported && profileParameters !== null && bodyValid && confirmedTeeth && teeth !== '' && (kind !== 'herringbone' || symmetric);
   const apply = () => {
     if (!ready || !profileParameters) return;
     const patch: ApplyParams = { ...profileParameters, teeth: Number(teeth), width: Number(width), backlash: spanPath ? spanApplication!.candidate.parameters.backlash : 0,
@@ -119,6 +139,7 @@ export function PhotoWizard({ onApply, onManual, onDraftChange, active = true }:
       buildModelMesh({ ...defaultModel(patch.kind), ...patch });
       onApply(patch, spanPath ? 'Фото, подтверждённые данные и общая нормаль; модуль, смещение и утонение рассчитаны без округления.' : 'Фото и подтверждённые исходные данные; модуль рассчитан без округления.', {
         method: spanPath ? 'confirmed-photo-with-span-measurement-v1' : analysis?.damageHypothesis ? 'confirmed-measurements-with-damage-hypothesis-v4' : photoMeasurement ? 'confirmed-measurements-with-photo-scale-v3' : 'confirmed-measurements-v2',
+        familySelection: familyApplication ?? { method: 'direct-list', source: 'photo', modelKind: kind },
         input: spanPath ? { kind: input.kind, profileType: input.profileType, toothCount: input.toothCount, standardAddendum: input.standardAddendum } : input,
         calculation: spanPath ? { method: 'span-measurement', parameters: spanApplication!.candidate.parameters, representativeReadings: spanApplication!.candidate.representativeReadings } : result.calculation,
         provenance: spanPath ? { profileParameters: 'derived-from-explicitly-applied-span-measurements' } : result.provenance,
@@ -144,8 +165,8 @@ export function PhotoWizard({ onApply, onManual, onDraftChange, active = true }:
       requestAnimationFrame(() => { stepHeading.current?.focus({ preventScroll: true }); stepHeading.current?.scrollIntoView({ block: 'start' }); });
     }
   };
-  const typeReady = supported && confirmedTeeth && Number.isInteger(Number(teeth)) && Number(teeth) >= (rack ? 1 : 6) && Number(teeth) <= 250;
-  const scaleReady = profileParameters !== null && (kind !== 'herringbone' || symmetric);
+  const typeReady = familyReady && supported && confirmedTeeth && Number.isInteger(Number(teeth)) && Number(teeth) >= (rack ? 1 : 6) && Number(teeth) <= 250;
+  const scaleReady = familyReady && profileParameters !== null && (kind !== 'herringbone' || symmetric);
   const canContinue = step === 0 ? !!image && !!analysis && !busy : step === 1 ? typeReady : scaleReady;
   const stepTitles = ['Добавьте фото детали', 'Уточните тип и число зубьев', 'Подтвердите масштаб и профиль', 'Размеры тела и построение'];
   return <div className="photo-wizard">
@@ -169,7 +190,6 @@ export function PhotoWizard({ onApply, onManual, onDraftChange, active = true }:
       {analysis.damageHypothesis && <>
         <strong>{analysis.damageHypothesis.toothCount}<small> — возможное полное число зубьев</small></strong>
         <p>С шаблоном согласуются {analysis.damageHypothesis.supportedTeeth} из {analysis.damageHypothesis.toothCount} ожидаемых участков ({Math.round(100 * analysis.damageHypothesis.visibleToothFraction)}%). Это гипотеза для {analysis.damageHypothesis.boundary === 'inner' ? 'внутреннего' : 'наружного'} контура, включая возможные утраченные зубья.</p>
-        <p>Разброс шага: {(100 * analysis.damageHypothesis.pitchScatterFraction).toFixed(2)}%; ошибка шаблона на сохранных участках: {(100 * analysis.damageHypothesis.templateErrorFraction).toFixed(1)}% его высоты. Это не допуск детали и не вероятность.</p>
         {image && imageSize && <DamagePreview image={image} width={imageSize.width} height={imageSize.height} analysis={analysis} />}
         <button type="button" className="secondary-button full" onClick={() => { onDraftChange(); invalidateSpan(); setTeeth(String(analysis.damageHypothesis!.toothCount)); setConfirmedTeeth(false); setDamageHypothesisTransferred(true); }}>
           Подставить гипотезу {analysis.damageHypothesis.toothCount}
@@ -177,13 +197,18 @@ export function PhotoWizard({ onApply, onManual, onDraftChange, active = true }:
         {damageHypothesisTransferred && <p role="status">Гипотеза перенесена. Отдельно подтвердите полное число зубьев, включая сломанные, по детали, чертежу или данным ответного колеса.</p>}
       </>}
       <p>{analysis.candidateTypes[0]?.evidence || 'По этому снимку нельзя уверенно определить деталь.'}</p>
-      <details><summary>Что удалось определить</summary><ul>{[...analysis.warnings, ...(analysis.damageHypothesis?.evidence ?? [])].map((w, i) => <li key={i}>{w}</li>)}</ul><p>Качество сигнала: {Math.round(analysis.confidence * 100)}/100. Это оценка контура, а не вероятность правильной детали.</p></details>
+      <details><summary>Что удалось определить</summary>{analysis.damageHypothesis && <p>Разброс шага: {(100 * analysis.damageHypothesis.pitchScatterFraction).toFixed(2)}%; ошибка шаблона на сохранных участках: {(100 * analysis.damageHypothesis.templateErrorFraction).toFixed(1)}% его высоты. Это не допуск детали и не вероятность.</p>}<ul>{[...analysis.warnings, ...(analysis.damageHypothesis?.evidence ?? [])].map((w, i) => <li key={i}>{w}</li>)}</ul><p>Качество сигнала: {Math.round(analysis.confidence * 100)}/100. Это оценка контура, а не вероятность правильной детали.</p></details>
     </div>}
-      <Choice active={active && step === 1} id="photo-type" label="Тип по осмотру детали" value={kind} onChange={v => { onDraftChange(); setKind(v); setDiameter(''); setPitch(''); setDiameterMethod('unknown'); setBeta(''); setBody(''); setStandard(false); setSymmetric(false); setPhotoMeasurement(null); setConfirmedTeeth(false); setSpanApplication(null); setSpanPending(false); }} options={{ unknown: 'Пока не знаю', ...Object.fromEntries(inferredKinds.map(key => [key, modelNames[key]])), other: 'Циклоидальный, конус, червяк или другой тип' }} />
+      <Choice active={active && step === 1} id="photo-type" label="Тип по осмотру детали" value={kind} onChange={chooseDirectKind} options={{ unknown: 'Пока не знаю', ...Object.fromEntries(inferredKinds.map(key => [key, modelNames[key]])), other: 'Циклоидальный, конус, червяк или другой тип' }} />
+      <FamilyAssistant key={imageSize?.id ?? 'no-photo'} active={active && step === 1} source="photo" photoHint={analysis?.candidateTypes[0] ?? null}
+        application={familyApplication} engaged={familyPending || !!familyApplication}
+        onDraftChange={() => { onDraftChange(); setFamilyApplication(null); setFamilyPending(true); }} onApply={applyFamily}
+        onCancel={() => { onDraftChange(); setFamilyApplication(null); setFamilyPending(false); }} />
+      {familyPending && <p className="family-notice" role="status">Ответы о типе ещё не применены. Завершите помощник или вернитесь к прямому выбору типа.</p>}
       {!supported && <div className="expert-note"><p>{kind === 'other' ? 'Для этого типа нужны отдельные исходные параметры. Циклоидальное, коническое колесо и ZA-червяк доступны в ручном режиме.' : 'Осмотрите боковую поверхность: прямые, косые и шевронные зубья могут иметь похожий торцевой контур. У внутреннего колеса зубья направлены к центру кольца.'}</p><button className="inline-link" onClick={onManual}>Перейти к ручному вводу <ArrowRight size={14} /></button></div>}
       <div className="photo-spaced"><Measure label={rack ? 'Число зубьев участка' : 'Полное число зубьев'} value={teeth} set={v => { onDraftChange(); invalidateSpan(); setTeeth(v); setConfirmedTeeth(false); setDamageHypothesisTransferred(false); }} placeholder="24" /></div>
       <label className="check-row"><Checkbox checked={confirmedTeeth} onCheckedChange={v => editProfile(setConfirmedTeeth, v === true)} /><span>Число зубьев проверено по детали, включая повреждённые.</span></label>
-      {!typeReady && <p className="field-help">Выберите тип и отдельно подтвердите полное число зубьев. Гипотезы контура для этого недостаточно.</p>}
+      {!typeReady && <p className="field-help">Выберите тип и отдельно подтвердите полное число зубьев. Помощник типа и гипотеза контура не подтверждают число зубьев.</p>}
     </section>
     <section hidden={step !== 2} aria-label="Масштаб и профиль">
       <p className="step-intro">Известный размер задаёт масштаб. Профиль и его углы берём из измерений или документации — по одному контуру их не определить.</p>

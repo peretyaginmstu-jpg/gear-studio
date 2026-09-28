@@ -60,7 +60,7 @@ test('undercut screen uses rack cutter condition; correcting x removes screen wa
   const b=deriveGear(p({teeth:12,profileShift:.35}));assert.ok(!b.warnings.some(w=>w.code==='UNDERCUT'));
 });
 test('invalid, unsupported and ambiguous below-base internal inputs are rejected',()=>{
-  for(const q of [p({module:0}),p({teeth:24.5}),p({bore:100}),p({backlash:10}),p({kind:'internal',teeth:12}),p({width:NaN}),p({kind:'worm' as any}),p({helixAngleDeg:undefined as any})])assert.throws(()=>buildGearMesh(q));
+  for(const q of [p({module:0}),p({teeth:24.5}),p({bore:100}),p({backlash:10}),p({kind:'internal',teeth:12}),p({width:NaN}),p({kind:'worm' as unknown as GearParams['kind']}),p({helixAngleDeg:undefined as unknown as number})])assert.throws(()=>buildGearMesh(q));
 });
 for(const kind of ['spur','helical','herringbone','internal','rack'] as const)test(`${kind}: watertight winding, STL welded roundtrip, positive volume`,()=>{
   const mesh=buildGearMesh(p({kind,teeth:kind==='internal'?48:24}));
@@ -160,5 +160,5 @@ test('helical root matches independent ellipse-parameterized rolling-tool envelo
 });
 test('resource preflight rejects a formally valid but browser-exhausting dense helix',()=>{
   assert.throws(()=>buildGearMesh(p({kind:'helical',module:.1,teeth:250,helixAngleDeg:45,width:118,bore:2,backlash:0}),{flankSamples:64}),
-    (e:any)=>e.code==='MESH_BUDGET');
+    (e:unknown)=>typeof e==='object'&&e!==null&&'code' in e&&e.code==='MESH_BUDGET');
 });

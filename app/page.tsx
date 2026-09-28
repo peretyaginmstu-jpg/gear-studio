@@ -7,6 +7,7 @@ import { PhotoWizard } from '@/components/gear/PhotoWizard';
 import { ReferenceDialog } from '@/components/gear/ReferenceDialog';
 import { ParameterEditor } from '@/components/gear/ParameterEditor';
 import { SpanMeasurementAssistant } from '@/components/gear/SpanMeasurementAssistant';
+import { FamilyAssistant } from '@/components/gear/FamilyAssistant';
 import { ModelChips, ModelSummary, ModelInspection } from '@/components/gear/ModelSummary';
 import { CheckoutActions } from '@/components/gear/CheckoutActions';
 import { useGearTool } from '@/components/gear/useGearTool';
@@ -37,15 +38,15 @@ export default function Home() {
   }, [state.stage, state.mode]);
   const edit = (params: ModelParams) => send({ type: 'edit-manual', params });
   const change = (key: keyof ModelParams, value: number) => edit({ ...state.manualDraft, [key]: value });
-  const selectKind = (kind: ModelKind) => edit(defaultModel(kind));
+  const selectKind = (kind: ModelKind) => send({ type: 'select-manual-kind', kind });
   const chooseInput = (mode: InputMode) => send({ type: 'choose-input', mode });
   const navigate = (stage: JourneyStage) => send({ type: 'navigate', stage });
-  const buildManual = () => { if (!updating && !manualCheck.error && !state.manualSpanPending) send({ type: 'build', params: state.manualDraft, origin: 'Параметры заданы вручную', evidence: null }); };
+  const buildManual = () => { if (!updating && !manualCheck.error && !state.manualSpanPending && !state.manualFamilyPending) send({ type: 'build', params: state.manualDraft, origin: 'Параметры заданы вручную', evidence: null }); };
   const model = hasCurrentModel(state) ? state.built : null, checkout = checkoutSnapshot(state);
   const modelVisible = model && ['review', 'delivery', 'checkout'].includes(state.stage);
   const inputActive = state.stage === 'input', photoActive = inputActive && state.mode === 'photo';
   useGearTool(state.built?.params ?? state.manualDraft, params => {
-    send({ type: 'choose-input', mode: 'manual' }); send({ type: 'clear-manual-span' }); send({ type: 'edit-manual', params });
+    send({ type: 'choose-input', mode: 'manual' }); send({ type: 'clear-manual-span' }); send({ type: 'edit-manual', params }); send({ type: 'clear-manual-family', method: 'webmcp' });
     send({ type: 'build', params, origin: 'Параметры заданы через инструмент конструктора', evidence: null });
   });
 
@@ -86,14 +87,17 @@ export default function Home() {
           <div className="journey-form">
             <div hidden={state.mode !== 'manual'}>
               <ParameterEditor active={inputActive && state.mode === 'manual'} params={state.manualDraft} onChange={change} onKind={selectKind}
-                onHand={hand => edit({ ...state.manualDraft, wormHand: hand })} onReset={() => edit(defaultModel(state.manualDraft.kind))} onReference={() => setReference(true)} />
+                onHand={hand => edit({ ...state.manualDraft, wormHand: hand })} onReset={() => edit(defaultModel(state.manualDraft.kind))} onReference={() => setReference(true)}
+                familyAssistant={<FamilyAssistant active={inputActive && state.mode === 'manual'} source="manual" application={state.manualFamily} engaged={state.manualFamilyPending || !!state.manualFamily}
+                  onDraftChange={() => send({ type: 'edit-manual-family' })} onApply={application => send({ type: 'apply-manual-family', application })} onCancel={() => send({ type: 'clear-manual-family' })} />} />
               {state.manualDraft.kind === 'spur' && <SpanMeasurementAssistant teeth={state.manualDraft.teeth} toolTipRadiusCoefficient={state.manualDraft.toolTipRadiusCoefficient ?? .3}
                 application={state.manualSpan} engaged={state.manualSpanPending || state.manualSpan !== null}
                 onDraftChange={() => send({ type: 'edit-manual-span' })} onApply={application => send({ type: 'apply-manual-span', application })} onCancel={() => send({ type: 'clear-manual-span' })} />}
-              <div className="manual-build-status" aria-live="polite">{state.manualSpanPending ? <p>Измерения ещё не применены. Завершите помощник или выберите в нём прямой ввод параметров.</p> : updating ? <p>Проверяем параметры…</p> : manualCheck.error ? <p className="inline-error" role="alert">{manualCheck.error}</p> : <p><Check size={17} /> Параметры можно использовать для построения.</p>}</div>
-              <button className="primary-button full build-model-button" disabled={state.manualSpanPending || updating || !!manualCheck.error} onClick={buildManual}>Построить модель <ArrowRight size={20} /></button>
+              <div className="manual-build-status" aria-live="polite">{state.manualFamilyPending ? <p>Ответы о типе ещё не применены. Завершите помощник или вернитесь в нём к прямому выбору типа.</p> : state.manualSpanPending ? <p>Измерения ещё не применены. Завершите помощник или выберите в нём прямой ввод параметров.</p> : updating ? <p>Проверяем параметры…</p> : manualCheck.error ? <p className="inline-error" role="alert">{manualCheck.error}</p> : <p><Check size={17} /> Параметры можно использовать для построения.</p>}</div>
+              <button className="primary-button full build-model-button" disabled={state.manualFamilyPending || state.manualSpanPending || updating || !!manualCheck.error} onClick={buildManual}>Построить модель <ArrowRight size={20} /></button>
             </div>
-            <div hidden={state.mode !== 'photo'}><PhotoWizard active={photoActive} onDraftChange={() => send({ type: 'edit-photo' })} onApply={(params, origin, evidence) => send({ type: 'build', params: { ...defaultModel(params.kind), ...params }, origin, evidence })} onManual={() => chooseInput('manual')} /></div>
+            <div hidden={state.mode !== 'photo'}><PhotoWizard active={photoActive} onDraftChange={() => send({ type: 'edit-photo' })} onApply={(params, origin, evidence) => send({ type: 'build', params: { ...defaultModel(params.kind), ...params }, origin, evidence })} onManual={() => chooseInput('manual')}
+              onManualFamily={application => { chooseInput('manual'); send({ type: 'apply-manual-family', application }); }} /></div>
             {state.error && <p className="inline-error" role="alert">{state.error}</p>}
           </div>
           <aside className="input-help"><span className="help-icon">{state.mode === 'photo' ? <Camera size={24} /> : <Pencil size={24} />}</span>
@@ -137,7 +141,7 @@ export default function Home() {
         <section className="engineering-panel"><ModelInspection model={model} onReference={() => setReference(true)} /></section>
       </div>}
     </main>
-    <footer className="page-footer"><span>ЗАЦЕПЛЕНИЕ <span className="muted">/ инженерная мастерская</span></span><span>Локальные вычисления · Миллиметры · Версия 0.8</span></footer>
+    <footer className="page-footer"><span>ЗАЦЕПЛЕНИЕ <span className="muted">/ инженерная мастерская</span></span><span>Локальные вычисления · Миллиметры · Версия 0.9</span></footer>
     <ReferenceDialog open={reference} onOpenChange={setReference} />
   </div>;
 }

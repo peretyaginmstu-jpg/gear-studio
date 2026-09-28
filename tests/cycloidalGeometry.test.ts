@@ -150,10 +150,10 @@ test('constant pressure angle has no effect; generating radius materially change
 });
 
 test('representative sizes, tooth counts and radial dedenda remain finite and closed', () => {
-  for (const module of [0.1, 2, 30]) for (const teeth of [6, 24, 90, 250]) for (const radial of [false, true]) {
-    const mesh = buildCycloidalMesh(p({ module, teeth, width: 2 * module, bore: 0.025 * module,
-      backlash: 0, cycloidRollingRadius: radial ? module * teeth / 4 : undefined }));
-    const check = validateMesh(mesh); assert.ok(check.valid, JSON.stringify({ module, teeth, radial, check }));
+  for (const moduleMm of [0.1, 2, 30]) for (const teeth of [6, 24, 90, 250]) for (const radial of [false, true]) {
+    const mesh = buildCycloidalMesh(p({ module: moduleMm, teeth, width: 2 * moduleMm, bore: 0.025 * moduleMm,
+      backlash: 0, cycloidRollingRadius: radial ? moduleMm * teeth / 4 : undefined }));
+    const check = validateMesh(mesh); assert.ok(check.valid, JSON.stringify({ module: moduleMm, teeth, radial, check }));
     const n = mesh.cycloidalDiagnostics.outerPointsPerTooth, sector = mesh.profile.outer.slice(0, n + 1);
     let previous = -Infinity;
     for (const v of sector) {
