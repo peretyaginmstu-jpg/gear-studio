@@ -1,18 +1,19 @@
 "use client";
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useProjectField } from './ProjectContext';
 import { ArrowLeft, ArrowRight, Check, Download, HelpCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { downloadBlob } from '@/lib/download';
 import { changeFamilyAnswer, familyMemo, familyQuestion, identifyFamily, selectFamilyApplication,
   type FamilyAnswers, type FamilyApplication, type FamilyPhotoHint, type FamilyQuestionId } from '@/lib/familyIdentification';
 
-export function FamilyAssistant({ active, source, photoHint = null, application, engaged, onDraftChange, onApply, onCancel }: {
-  active: boolean; source: 'manual' | 'photo'; photoHint?: FamilyPhotoHint | null;
+export function FamilyAssistant({ active, source, draftIdentity = 'default', photoHint = null, application, engaged, onDraftChange, onApply, onCancel }: {
+  active: boolean; source: 'manual' | 'photo'; draftIdentity?: string; photoHint?: FamilyPhotoHint | null;
   application: FamilyApplication | null; engaged: boolean;
   onDraftChange: () => void; onApply: (application: FamilyApplication) => void; onCancel: () => void;
 }) {
-  const [answers, setAnswers] = useState<FamilyAnswers>({}), [page, setPage] = useState<FamilyQuestionId | 'result'>('partnerGroup');
-  const [limitedAcknowledged, setLimitedAcknowledged] = useState(false);
+  const [answers, setAnswers] = useProjectField<FamilyAnswers>(`${source}Family`, 'answers', {}, draftIdentity), [page, setPage] = useProjectField<FamilyQuestionId | 'result'>(`${source}Family`, 'page', 'partnerGroup', draftIdentity);
+  const [limitedAcknowledged, setLimitedAcknowledged] = useProjectField(`${source}Family`, 'limitedAcknowledged', false, draftIdentity);
   const [seenApplication, setSeenApplication] = useState<FamilyApplication | null>(null);
   // An application can arrive from the other input branch. Reconcile that one event;
   // clearing it after an edit must never restore old answers over the user's draft.

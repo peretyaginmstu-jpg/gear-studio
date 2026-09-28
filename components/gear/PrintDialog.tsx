@@ -1,5 +1,6 @@
 "use client";
-import {useMemo,useState} from 'react';
+import {useMemo} from 'react';
+import {useProjectField} from './ProjectContext';
 import {Check,AlertTriangle,X,Download,Printer} from 'lucide-react';
 import {Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription} from '@/components/ui/dialog';
 import {Select,SelectContent,SelectItem,SelectTrigger,SelectValue} from '@/components/ui/select';
@@ -11,7 +12,7 @@ import {createPrintBrief} from '@/lib/printBrief';
 import {downloadBlob} from '@/lib/download';
 import {assessPrint,defaultPrintSettings,type PrintSettings} from '@/lib/printability';
 export function PrintDialog({open,onOpenChange,mesh,validation,provenance}:{open:boolean;onOpenChange:(b:boolean)=>void;mesh:ModelMesh|null;validation:MeshValidation|null;provenance:ModelProvenance}){
- const [settings,setSettings]=useState(defaultPrintSettings);const result=useMemo(()=>{try{return mesh&&validation?{data:assessPrint(mesh,validation,settings),error:null}:{data:null,error:'Сначала задайте корректную геометрию.'}}catch(e){return {data:null,error:e instanceof Error?e.message:'Ошибка настроек.'}}},[mesh,validation,settings]);
+ const [settings,setSettings]=useProjectField('print','settings',defaultPrintSettings);const result=useMemo(()=>{try{return mesh&&validation?{data:assessPrint(mesh,validation,settings),error:null}:{data:null,error:'Сначала задайте корректную геометрию.'}}catch(e){return {data:null,error:e instanceof Error?e.message:'Ошибка настроек.'}}},[mesh,validation,settings]);
  function setNumber(key:keyof PrintSettings,n:number){setSettings(s=>({...s,[key]:n}))}
  function exportJob(){
   if(!result.data||!mesh||!validation)return;

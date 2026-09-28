@@ -1,3 +1,4 @@
+import { APP_VERSION } from '../lib/appVersion.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { analyzeGearPair, createPairAnalysisDocument, initialPairMate, type PairReport } from '../lib/pairAnalysis.ts';
@@ -173,7 +174,7 @@ test('pair JSON owns both exact input snapshots and their normalized reports wit
   const first = p({ teeth: 40, bevelMateTeeth: 80 }), second = { ...initialPairMate(first), width: 8, bore: 6 };
   const expected = structuredClone({ first, second }), output = createPairAnalysisDocument({ first, second }, '2026-09-28T12:00:00.000Z');
   first.teeth = 60; second.width = 9;
-  assert.equal(output.schema, 'zatseplenie.pair-analysis.v3'); assert.equal(output.appVersion, '0.18.0');
+  assert.equal(output.schema, 'zatseplenie.pair-analysis.v3'); assert.equal(output.appVersion, APP_VERSION);
   assert.equal(output.createdAt, '2026-09-28T12:00:00.000Z'); assert.equal(output.units, 'mm');
   assert.deepEqual(output.input.first, expected.first); assert.deepEqual(output.input.second, expected.second);
   assert.equal(output.input.centerMode, 'not-applicable'); assert.equal(output.input.centerDistanceMm, null);

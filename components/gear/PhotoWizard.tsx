@@ -1,6 +1,7 @@
 "use client";
-/* eslint-disable @next/next/no-img-element -- The uploaded photo is previewed from an in-memory data URL and stays in the browser. */
-import { useMemo, useRef, useState } from 'react';
+/* eslint-disable @next/next/no-img-element -- The photo uses a local data URL and stays in the browser and the user's project file. */
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useProjectActivity, useProjectField } from './ProjectContext';
 import { Camera, Upload, ScanLine, Check, ArrowRight, ArrowLeft } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -28,29 +29,30 @@ export function PhotoWizard({ onApply, onManual, onManualFamily, onDraftChange, 
   toothCount?: ConfirmedCycloidalPhotoToothCount; moduleInference: CycloidalPhotoModuleInference; photoScaleEvidence?: unknown;
 }) => void;
   onManualFamily: (application: FamilyApplication) => void; onDraftChange: () => void; active?: boolean }) {
-  const [step, setStep] = useState(0), stepHeading = useRef<HTMLHeadingElement>(null);
+  const [step, setStep] = useProjectField('photo', 'step', 0), stepHeading = useRef<HTMLHeadingElement>(null);
   const goStep = (next: number) => { setStep(next); requestAnimationFrame(() => { stepHeading.current?.focus({ preventScroll: true }); stepHeading.current?.scrollIntoView({ block: 'start' }); }); };
   const edit = <T,>(setter: (value: T) => void, value: T) => { onDraftChange(); setter(value); };
   const fileInput = useRef<HTMLInputElement>(null), request = useRef(0);
-  const [image, setImage] = useState<string | null>(null), [analysis, setAnalysis] = useState<PhotoAnalysis | null>(null);
+  const [image, setImage] = useProjectField<string | null>('photo', 'image', null), [analysis, setAnalysis] = useState<PhotoAnalysis | null>(null);
   const pixels = useRef<ImageDataLike | null>(null);
-  const [region, setRegion] = useState<PhotoRegion | null>(null), [analysisEvidence, setAnalysisEvidence] = useState<PhotoRegionEvidence | null>(null);
-  const [analysisRevision, setAnalysisRevision] = useState(0);
-  const [imageSize, setImageSize] = useState<{ width: number; height: number; id: number; source: { fileName: string; mimeType: string; originalWidth: number; originalHeight: number } } | null>(null);
-  const [photoMeasurement, setPhotoMeasurement] = useState<PhotoScaleMeasurement | null>(null);
+  const [region, setRegion] = useProjectField<PhotoRegion | null>('photo', 'region', null), [analysisEvidence, setAnalysisEvidence] = useState<PhotoRegionEvidence | null>(null);
+  const [analysisRevision, setAnalysisRevision] = useProjectField('photo', 'analysisRevision', 0);
+  const [imageSize, setImageSize] = useProjectField<{ width: number; height: number; id: number; source: { fileName: string; mimeType: string; originalWidth: number; originalHeight: number } } | null>('photo', 'imageSize', null);
+  const [photoMeasurement, setPhotoMeasurement] = useProjectField<PhotoScaleMeasurement | null>('photo', 'photoMeasurement', null);
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
-  const [kind, setKind] = useState('unknown'), [profile, setProfile] = useState('unknown');
-  const [teeth, setTeeth] = useState(''), [confirmedTeeth, setConfirmedTeeth] = useState(false);
-  const [damageHypothesisTransferred, setDamageHypothesisTransferred] = useState(false);
-  const [toothCountResetReason, setToothCountResetReason] = useState<PhotoToothCountResetReason>(null);
-  const [diameter, setDiameter] = useState(''), [pitch, setPitch] = useState(''), [diameterMethod, setDiameterMethod] = useState('unknown');
-  const [beta, setBeta] = useState(''), [alpha, setAlpha] = useState(''), [shift, setShift] = useState('');
-  const [standard, setStandard] = useState(false), [symmetric, setSymmetric] = useState(false);
-  const [width, setWidth] = useState(''), [body, setBody] = useState('');
-  const [internalCutter, setInternalCutter] = useState<InternalCutterInputs>({ ...defaultInternalCutter });
-  const [source, setSource] = useState<MeasurementSource>('user_confirmation');
-  const [spanApplication, setSpanApplication] = useState<SpanApplication | null>(null), [spanPending, setSpanPending] = useState(false);
-  const [familyApplication, setFamilyApplication] = useState<FamilyApplication | null>(null), [familyPending, setFamilyPending] = useState(false);
+  useProjectActivity(busy);
+  const [kind, setKind] = useProjectField('photo', 'kind', 'unknown'), [profile, setProfile] = useProjectField('photo', 'profile', 'unknown');
+  const [teeth, setTeeth] = useProjectField('photo', 'teeth', ''), [confirmedTeeth, setConfirmedTeeth] = useProjectField('photo', 'confirmedTeeth', false);
+  const [damageHypothesisTransferred, setDamageHypothesisTransferred] = useProjectField('photo', 'damageHypothesisTransferred', false);
+  const [toothCountResetReason, setToothCountResetReason] = useProjectField<PhotoToothCountResetReason>('photo', 'toothCountResetReason', null);
+  const [diameter, setDiameter] = useProjectField('photo', 'diameter', ''), [pitch, setPitch] = useProjectField('photo', 'pitch', ''), [diameterMethod, setDiameterMethod] = useProjectField('photo', 'diameterMethod', 'unknown');
+  const [beta, setBeta] = useProjectField('photo', 'beta', ''), [alpha, setAlpha] = useProjectField('photo', 'alpha', ''), [shift, setShift] = useProjectField('photo', 'shift', '');
+  const [standard, setStandard] = useProjectField('photo', 'standard', false), [symmetric, setSymmetric] = useProjectField('photo', 'symmetric', false);
+  const [width, setWidth] = useProjectField('photo', 'width', ''), [body, setBody] = useProjectField('photo', 'body', '');
+  const [internalCutter, setInternalCutter] = useProjectField<InternalCutterInputs>('photo', 'internalCutter', { ...defaultInternalCutter });
+  const [source, setSource] = useProjectField<MeasurementSource>('photo', 'source', 'user_confirmation');
+  const [spanApplication, setSpanApplication] = useProjectField<SpanApplication | null>('photo', 'spanApplication', null), [spanPending, setSpanPending] = useProjectField('photo', 'spanPending', false);
+  const [familyApplication, setFamilyApplication] = useProjectField<FamilyApplication | null>('photo', 'familyApplication', null), [familyPending, setFamilyPending] = useProjectField('photo', 'familyPending', false);
   const invalidateSpan = () => { if (spanApplication || spanPending) { setSpanApplication(null); setSpanPending(true); } };
   const editProfile = <T,>(setter: (value: T) => void, value: T) => { invalidateSpan(); edit(setter, value); };
   const supported = inferredKinds.includes(kind as InferredGearKind);
@@ -93,6 +95,34 @@ export function PhotoWizard({ onApply, onManual, onManualFamily, onDraftChange, 
     setAnalysis(result.analysis); setAnalysisEvidence(result.evidence);
     if (result.analysis.toothCount) setTeeth(String(result.analysis.toothCount));
   };
+  const restoredPhoto = useRef({ image, imageSize, region });
+  useEffect(() => {
+    const saved = restoredPhoto.current;
+    if (!saved.image || !saved.imageSize) return;
+    let cancelled = false;
+    request.current = Math.max(request.current, saved.imageSize.id);
+    const id = request.current;
+    const frame = requestAnimationFrame(() => {
+      setBusy(true);
+      void (async () => {
+        try {
+          const img = new Image(); img.src = saved.image!; await img.decode();
+          if (cancelled || id !== request.current) return;
+          if (img.naturalWidth !== saved.imageSize!.width || img.naturalHeight !== saved.imageSize!.height) throw new Error('Размер сохранённого фото не совпадает с разметкой.');
+          const canvas = document.createElement('canvas'); canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
+          const ctx = canvas.getContext('2d', { willReadFrequently: true });
+          if (!ctx) throw new Error('Не удалось восстановить фото.');
+          ctx.drawImage(img, 0, 0);
+          const input = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const result = analyzeGearRegion(input, saved.region);
+          pixels.current = input; setAnalysis(result.analysis); setAnalysisEvidence(result.evidence);
+          // Reanalysis must not replace the user's saved count or confirmations.
+        } catch (error) { if (!cancelled && id === request.current) setError(error instanceof Error ? error.message : 'Не удалось открыть сохранённое фото.'); }
+        finally { if (!cancelled && id === request.current) setBusy(false); }
+      })();
+    });
+    return () => { cancelled = true; cancelAnimationFrame(frame); };
+  }, [setAnalysis, setAnalysisEvidence, setBusy, setError]);
   const applyRegion = async (selected: PhotoRegion | null) => {
     const input = pixels.current;
     if (!input || samePhotoRegion(region, selected, input)) return;
@@ -245,7 +275,7 @@ export function PhotoWizard({ onApply, onManual, onManualFamily, onDraftChange, 
       <details><summary>Что удалось определить</summary>{analysis.damageHypothesis && <p>Разброс шага: {(100 * analysis.damageHypothesis.pitchScatterFraction).toFixed(2)}%; ошибка шаблона на сохранных участках: {(100 * analysis.damageHypothesis.templateErrorFraction).toFixed(1)}% его высоты. Это не допуск детали и не вероятность.</p>}<ul>{[...analysis.warnings, ...(analysis.damageHypothesis?.evidence ?? [])].map((w, i) => <li key={i}>{w}</li>)}</ul><p>Качество сигнала: {Math.round(analysis.confidence * 100)}/100. Это оценка контура, а не вероятность правильной детали.</p></details>
     </div>}
       <Choice active={active && step === 1} id="photo-type" label="Тип по осмотру детали" value={kind} onChange={chooseDirectKind} options={{ unknown: 'Пока не знаю', ...Object.fromEntries(inferredKinds.map(key => [key, modelNames[key]])), other: 'Циклоидальный, конус, червяк или другой тип' }} />
-      <FamilyAssistant key={`${imageSize?.id ?? 'no-photo'}-${analysisRevision}`} active={active && step === 1 && !busy} source="photo" photoHint={analysis?.candidateTypes[0] ?? null}
+      <FamilyAssistant key={`${imageSize?.id ?? 'no-photo'}-${analysisRevision}`} active={active && step === 1 && !busy} source="photo" draftIdentity={`${imageSize?.id ?? 'no-photo'}-${analysisRevision}`} photoHint={analysis?.candidateTypes[0] ?? null}
         application={familyApplication} engaged={familyPending || !!familyApplication}
         onDraftChange={() => { onDraftChange(); setFamilyApplication(null); setFamilyPending(true); }} onApply={applyFamily}
         onCancel={() => { onDraftChange(); setFamilyApplication(null); setFamilyPending(false); }} />
@@ -297,12 +327,12 @@ export function PhotoWizard({ onApply, onManual, onManualFamily, onDraftChange, 
               : 'Выбрать геометрию вручную'} <ArrowRight size={14} />
           </button>}
       </div>}
-      {image && imageSize && supported && !rack && <PhotoScale key={`${imageSize.id}-${analysisRevision}-${kind}`} active={active && step === 2} image={image} width={imageSize.width} height={imageSize.height} internal={internal} isApplied={photoMeasurement !== null}
+      {image && imageSize && supported && !rack && <PhotoScale key={`${imageSize.id}-${analysisRevision}-${kind}`} draftIdentity={`${imageSize.id}-${analysisRevision}-${kind}`} active={active && step === 2} image={image} width={imageSize.width} height={imageSize.height} internal={internal} isApplied={photoMeasurement !== null}
         onInvalidated={invalidatePhotoMeasurement} onMeasured={measurement => { onDraftChange(); invalidateSpan(); setPhotoMeasurement(measurement); setDiameter(String(measurement.result.diameterMm)); setDiameterMethod('tip_circle'); }} />}
       <label className="check-row"><Checkbox checked={standard} onCheckedChange={v => editProfile(setStandard, v === true)} /><span>{profile === 'cycloidal'
         ? 'Подтверждена высота головки ha=m; вершины не укорочены и не модифицированы.'
         : 'Подтверждены стандартная высота ha* = 1 и отсутствие укорочения или модификации вершин.'}</span></label>
-      {kind === 'spur' && profile === 'involute' && <SpanMeasurementAssistant key={`${imageSize?.id ?? 'no-image'}-${analysisRevision}`} teeth={Number(teeth)} toolTipRadiusCoefficient={.3}
+      {kind === 'spur' && profile === 'involute' && <SpanMeasurementAssistant key={`${imageSize?.id ?? 'no-image'}-${analysisRevision}`} draftScope="photoSpan" draftIdentity={`${imageSize?.id ?? 'no-image'}-${analysisRevision}`} teeth={Number(teeth)} toolTipRadiusCoefficient={.3}
         facts={{ teeth: typeReady, involute: profile === 'involute', standardTip: standard }}
         seed={{ ...(diameter !== '' ? { diameter: Number(diameter), diameterMethod: diameterMethod as SpanMeasurementInput['tipDiameterMethod'] } : {}), ...(alpha !== '' ? { pressureAngle: Number(alpha) } : {}) }}
         application={spanApplication} engaged={spanPath} onDraftChange={() => { onDraftChange(); setSpanApplication(null); setSpanPending(true); }}

@@ -16,6 +16,7 @@ import { validateMesh } from '@/lib/gearMath';
 import { buildModelMesh, defaultModel, type ModelParams, type ModelKind } from '@/lib/model';
 import { canVisit, checkoutSnapshot, hasCurrentModel, type JourneyStage, type InputMode } from '@/lib/journey';
 import { APP_VERSION } from '@/lib/appVersion';
+import { ProjectWorkspace, type ProjectSession } from '@/components/gear/ProjectWorkspace';
 
 const stages: { stage: JourneyStage; title: string }[] = [
   { stage: 'input', title: 'Исходные данные' }, { stage: 'review', title: 'Проверка модели' },
@@ -24,7 +25,11 @@ const stages: { stage: JourneyStage; title: string }[] = [
 const photoCountSourceLabels = { user_confirmation: 'проверка пользователем', measurement: 'результаты измерений', drawing: 'чертёж или документация' } as const;
 
 export default function Home() {
-  const { state, send } = useJourney(), heading = useRef<HTMLHeadingElement>(null);
+  return <ProjectWorkspace component={Studio} />;
+}
+
+function Studio({ project }: { project: ProjectSession }) {
+  const { state, send } = useJourney(project.initial, project.onJourney), heading = useRef<HTMLHeadingElement>(null);
   const [reference, setReference] = useState(false);
   const deferred = useDeferredValue(state.manualDraft), updating = deferred !== state.manualDraft;
   const manualCheck = useMemo(() => {
@@ -71,15 +76,16 @@ export default function Home() {
   return <div className="studio studio-v5 studio-v6">
     <Toaster position="bottom-center" richColors />
     <header className="topbar">
-      <button className="brand" onClick={() => navigate('start')} aria-label="Зацепление — на главную"><span className="brand-symbol"><Cog /></span>ЗАЦЕПЛЕНИЕ<span className="brand-version">LAB</span></button>
+      <button className="brand" disabled={project.busy} onClick={() => navigate('start')} aria-label="Зацепление — на главную"><span className="brand-symbol"><Cog /></span>ЗАЦЕПЛЕНИЕ<span className="brand-version">LAB</span></button>
       <span className="top-context">От детали — к своей модели</span>
       <button className="text-button header-reference" onClick={() => setReference(true)}><BookOpen size={20} /> Справочник</button>
     </header>
-    {state.stage !== 'start' && <nav className="journey-progress" aria-label="Путь к модели"><ol>{stages.map(({ stage, title }, index) => <li key={stage} aria-current={stage === state.stage ? 'step' : undefined}>
+    {project.controls}
+    {state.stage !== 'start' && <nav inert={project.busy} className="journey-progress" aria-label="Путь к модели"><ol>{stages.map(({ stage, title }, index) => <li key={stage} aria-current={stage === state.stage ? 'step' : undefined}>
       <button disabled={!canVisit(state, stage)} onClick={() => navigate(stage)}><span>{canVisit(state, stage) && index < stages.findIndex(s => s.stage === state.stage) ? <Check size={15} /> : index + 1}</span>{title}</button>
     </li>)}</ol></nav>}
 
-    <main>
+    <main inert={project.busy}>
       {state.stage === 'start' && <section className="journey-start">
         <p className="journey-eyebrow">ИНЖЕНЕРНАЯ МАСТЕРСКАЯ В БРАУЗЕРЕ</p>
         <h1 ref={heading} tabIndex={-1}>Восстановите шестерню.<br />Или создайте новую.</h1>
@@ -89,7 +95,7 @@ export default function Home() {
           <button className="start-choice" onClick={() => chooseInput('manual')}><span className="start-choice-icon"><SlidersHorizontal size={29} /></span><span><small>Я ЗНАЮ РАЗМЕРЫ</small><strong>Задать параметры</strong><span>Выберите тип зацепления и введите параметры своей детали.</span></span><ArrowRight size={23} /></button>
         </div>
         {model && <button className="inline-link resume-model" onClick={() => navigate('review')}>Вернуться к построенной модели <ArrowRight size={16} /></button>}
-        {state.mode && !model && <p className="draft-kept">Ваш черновик сохранён в этой вкладке. Выберите тот же способ, чтобы продолжить.</p>}
+        {state.mode && !model && <p className="draft-kept">Выберите тот же способ, чтобы продолжить черновик. Статус сохранения — в строке проекта.</p>}
         <div className="start-steps"><div><span>01</span><h2>Расскажите о детали</h2><p>Фото и измерения или параметры из чертежа.</p></div><div><span>02</span><h2>Проверьте модель</h2><p>Поверните её в 3D, сверьте размеры и ограничения.</p></div><div><span>03</span><h2>Получите результат</h2><p>Скачайте STL с паспортом или подготовьте задание на печать.</p></div></div>
         <div className="start-capabilities"><span><Cog size={18} /> 10 семейств зацепления</span><span><Box size={18} /> Настоящая 3D-модель</span><span><Download size={18} /> Бесплатный Standard STL</span></div>
         <p className="start-footnote">Расчёты и фото остаются на устройстве. Пригодность рабочей передачи проверяют по нагрузке, материалу и ответной детали.</p>

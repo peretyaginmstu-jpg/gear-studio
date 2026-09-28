@@ -1,0 +1,205 @@
+import { z } from 'zod';
+import { APP_VERSION } from './appVersion.ts';
+import { buildModelMesh, type ModelParams } from './model.ts';
+import { validateMesh } from './gearMath.ts';
+import { initialJourney, hasCurrentModel, type JourneyState, type PhotoCycloidalHandoff } from './journey.ts';
+import { selectFamilyApplication } from './familyIdentification.ts';
+import { analyzeSpanMeasurement, selectSpanApplication } from './spanMeasurement.ts';
+import { estimatePhotoCircle, photoScaleSources } from './photo-scale.ts';
+import { cycloidalPhotoInferenceMatches, type CycloidalPhotoModuleInference } from './cycloidalPhotoInference.ts';
+
+export const PROJECT_SCHEMA = 'zatseplenie.project.v1';
+export const MAX_PROJECT_BYTES = 32 * 1024 * 1024;
+const finite = z.number().finite();
+// An empty numeric control is NaN in memory, null on disk, and empty on restore.
+const draftNumber = finite.nullable().transform(value => value ?? NaN);
+const text = z.string().max(500);
+const modelKind = z.enum(['spur', 'helical', 'herringbone', 'internal', 'internal-helical', 'rack', 'helical-rack', 'worm', 'cycloidal', 'bevel']);
+const mode = z.enum(['manual', 'photo']);
+const source = z.enum(['measurement', 'drawing', 'user_confirmation']);
+const diameterMethod = z.enum(['tip_circle', 'opposed_tips', 'unknown', 'uncorrected_caliper_span']);
+const modelSchema = z.object({
+  kind: modelKind, teeth: draftNumber, module: draftNumber, width: draftNumber, bore: draftNumber,
+  pressureAngleDeg: draftNumber, helixAngleDeg: draftNumber, profileShift: draftNumber, backlash: draftNumber,
+  rimThickness: draftNumber.optional(), rackBaseHeight: draftNumber.optional(), toolTipRadiusCoefficient: draftNumber.optional(),
+  profileTolerance: draftNumber.optional(), internalCutterTeeth: draftNumber.optional(), internalCutterProfileShift: draftNumber.optional(),
+  internalCutterAddendumCoefficient: draftNumber.optional(), internalCutterTipRadiusCoefficient: draftNumber.optional(), internalCutterThinning: draftNumber.optional(),
+  wormStarts: draftNumber.optional(), wormDiameterFactor: draftNumber.optional(), wormHand: z.enum(['right', 'left']).optional(),
+  cycloidRollingRadius: draftNumber.optional(), bevelMateTeeth: draftNumber.optional(), bevelShaftAngleDeg: draftNumber.optional(),
+}).strict();
+const familyAnswers = z.object({
+  partnerGroup: z.enum(['toothed', 'flexible', 'spline', 'unknown']).optional(),
+  partner: z.enum(['gear-rack', 'worm', 'pins', 'belt', 'chain', 'unknown']).optional(),
+  body: z.enum(['external-cylinder', 'internal-ring', 'rack', 'cone', 'screw', 'face', 'unknown']).optional(),
+  direction: z.enum(['straight', 'inclined', 'opposed', 'unknown']).optional(),
+  coneDirection: z.enum(['straight', 'curved', 'unknown']).optional(), screwPartner: z.enum(['wheel', 'nut', 'unknown']).optional(),
+}).strict();
+const familyHint = z.object({ type: z.enum(['external_circular', 'internal_ring', 'linear_rack', 'undetermined']), evidence: text.optional() }).nullable();
+const familyApplication = z.object({ source: mode, acceptedByUser: z.literal(true), limitedModelAcknowledged: z.boolean(),
+  decision: z.object({ answers: familyAnswers, photoHint: familyHint }),
+}).transform((value, ctx) => {
+  try { return selectFamilyApplication(value.decision.answers, value.source, value.decision.photoHint, value.limitedModelAcknowledged); }
+  catch { ctx.addIssue({ code: 'custom', message: 'Несогласованные ответы о типе.' }); return z.NEVER; }
+});
+const readings = z.object({ spanMm: finite, nextSpanMm: finite, tipDiameterMm: finite });
+const spanApplication = z.object({ selected: z.enum(['exact-inverse', 'bounded-zero-thinning-fit']), input: readings.extend({
+  kind: z.literal('spur'), teeth: finite, spanTeeth: finite, pressureAngleDeg: finite.nullable(), pressureAngleConfirmed: z.boolean(),
+  tipDiameterMethod: diameterMethod, errorBounds: readings,
+  confirmations: z.object({ teeth: z.boolean(), involute: z.boolean(), standardTip: z.boolean(), measurementSetup: z.boolean() }),
+  toolTipRadiusCoefficient: finite,
+}) }).transform((value, ctx) => {
+  try { return selectSpanApplication(analyzeSpanMeasurement(value.input), value.selected); }
+  catch { ctx.addIssue({ code: 'custom', message: 'Измерения общей нормали не воспроизводятся.' }); return z.NEVER; }
+});
+const point = z.object({ x: finite, y: finite }).strict();
+const photoScaleInput = z.object({
+  imageWidth: finite.int().min(1).max(2048), imageHeight: finite.int().min(1).max(2048),
+  referencePoints: z.array(point).max(2), tipPoints: z.array(point).max(3),
+  referenceLengthMm: finite.optional(), referenceToleranceMm: finite.optional(), pixelUncertaintyPx: finite.optional(),
+  confirmedCoplanar: z.boolean(), confirmedAxialView: z.boolean(),
+});
+const photoMeasurement = z.object({ input: photoScaleInput, confirmedTipCircle: z.literal(true),
+  target: z.enum(['internal_tooth_tips', 'external_tooth_tips']),
+}).transform((value, ctx) => {
+  const result = estimatePhotoCircle(value.input);
+  if (result.status !== 'ready') { ctx.addIssue({ code: 'custom', message: 'Разметка масштаба не воспроизводится.' }); return z.NEVER; }
+  return { ...value, method: 'three-tip-circle-with-reference' as const, coordinateSpace: 'working_image_pixels' as const, result, sources: photoScaleSources };
+});
+const cycloidalInference = z.unknown().refine(value => {
+  try {
+    const v = value as CycloidalPhotoModuleInference;
+    return v?.status === 'ready' ? cycloidalPhotoInferenceMatches(v)
+      : v?.status === 'missing' ? z.array(text).max(30).safeParse(v.questions).success
+        : v?.status === 'rejected' && text.safeParse(v.reason).success;
+  } catch { return false; }
+}, 'Несогласованный циклоидальный расчёт.').transform(value => value as CycloidalPhotoModuleInference);
+
+export type ProjectForms = Record<string, { identity: string; values: Record<string, unknown> }>;
+const familyForm = z.object({ answers: familyAnswers, page: z.enum(['partnerGroup', 'partner', 'body', 'direction', 'coneDirection', 'screwPartner', 'result']), limitedAcknowledged: z.boolean() }).partial().strict();
+const spanForm = z.object({ k: text, w: text, nextW: text, diameter: text, alpha: text, method: diameterMethod,
+  ew: text, enext: text, ed: text, partConfirmed: z.boolean(), standardConfirmed: z.boolean(), angleConfirmed: z.boolean(), setupConfirmed: z.boolean(), calculated: z.boolean(),
+}).partial().strict();
+const photoForm = z.object({
+  step: finite.int().min(0).max(3), image: z.string().max(24 * 1024 * 1024).regex(/^data:image\/png;base64,[A-Za-z0-9+/]+=*$/).nullable(),
+  imageSize: z.object({ width: finite.int().min(1).max(2048), height: finite.int().min(1).max(2048), id: finite.int().nonnegative(),
+    source: z.object({ fileName: text, mimeType: z.enum(['image/png', 'image/jpeg', 'image/webp']), originalWidth: finite.int().positive().max(60_000_000), originalHeight: finite.int().positive().max(60_000_000) }) }).nullable(),
+  region: z.object({ x: finite.int().nonnegative(), y: finite.int().nonnegative(), width: finite.int().positive(), height: finite.int().positive() }).nullable(),
+  analysisRevision: finite.int().nonnegative(), photoMeasurement: photoMeasurement.nullable(),
+  kind: z.enum(['unknown', 'other', 'spur', 'helical', 'herringbone', 'internal', 'internal-helical', 'rack', 'helical-rack']),
+  profile: z.enum(['unknown', 'involute', 'cycloidal', 'other']), teeth: text, confirmedTeeth: z.boolean(), damageHypothesisTransferred: z.boolean(),
+  toothCountResetReason: z.enum(['wheel-rack-meaning', 'photo-family-conflict']).nullable(),
+  diameter: text, pitch: text, diameterMethod, beta: text, alpha: text, shift: text, standard: z.boolean(), symmetric: z.boolean(), width: text, body: text,
+  internalCutter: z.object({ internalCutterTeeth: draftNumber, internalCutterProfileShift: draftNumber, internalCutterAddendumCoefficient: draftNumber,
+    internalCutterTipRadiusCoefficient: draftNumber, internalCutterThinning: draftNumber }).strict(),
+  source, spanApplication: spanApplication.nullable(), spanPending: z.boolean(), familyApplication: familyApplication.nullable(), familyPending: z.boolean(),
+}).partial().strict();
+const scaleForm = z.object({ referencePoints: z.array(point).max(2), tipPoints: z.array(point).max(3), referenceLength: text, referenceTolerance: text,
+  pixelError: text.nullable(), selectionErrors: z.array(finite.nonnegative()).max(5), coplanar: z.boolean(), axial: z.boolean(), confirmedTips: z.boolean(),
+}).partial().strict();
+const printForm = z.object({ settings: z.object({ bedX: draftNumber, bedY: draftNumber, bedZ: draftNumber,
+  nozzle: draftNumber, lineWidth: draftNumber, layer: draftNumber, material: z.enum(['PLA', 'PETG', 'PA', 'PA-CF']) }).strict() }).partial().strict();
+const formSchemas: Record<string, z.ZodTypeAny> = { photo: photoForm, photoFamily: familyForm, manualFamily: familyForm,
+  photoSpan: spanForm, manualSpan: spanForm, photoScale: scaleForm, print: printForm,
+  pair: z.object({ second: modelSchema, center: text }).partial().strict() };
+
+const handoff = z.object({ method: z.literal('confirmed-photo-cycloidal-handoff-v1'), selectedPhotoKind: z.literal('spur'), selectedProfile: z.literal('cycloidal'),
+  toothCountSeed: z.object({ value: finite.int().min(6).max(250), source }).nullable(), moduleInference: cycloidalInference.nullable(), photoScaleEvidence: z.unknown(),
+}).refine(value => value.moduleInference?.status !== 'ready' || cycloidalPhotoInferenceMatches(value.moduleInference, value.toothCountSeed ?? undefined));
+const savedJourney = z.object({
+  stage: z.enum(['start', 'input', 'review', 'delivery', 'checkout']), mode: mode.nullable(), manualDraft: modelSchema,
+  manualSpan: spanApplication.nullable(), manualSpanPending: z.boolean(), manualFamily: familyApplication.nullable(), manualFamilyPending: z.boolean(),
+  manualFamilyMethod: z.enum(['direct-parameters', 'direct-list', 'webmcp']), photoCycloidalHandoff: handoff.nullable(),
+  revision: finite.int().nonnegative(),
+  built: z.object({ revision: finite.int().nonnegative(), mode, params: modelSchema, origin: z.string().max(12000), evidence: z.unknown() }).nullable(),
+}).strict();
+export type SavedJourney = z.infer<typeof savedJourney>;
+export interface ProjectDocument {
+  schema: typeof PROJECT_SCHEMA;
+  appVersion: string;
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  journey: SavedJourney;
+  forms: ProjectForms;
+}
+const documentSchema = z.object({ schema: z.literal(PROJECT_SCHEMA), appVersion: z.string().max(30), id: z.string().uuid(),
+  name: z.string().trim().min(1).max(120), createdAt: z.string().datetime(), updatedAt: z.string().datetime(),
+  journey: savedJourney, forms: z.record(z.object({ identity: z.string().max(4000), values: z.record(z.unknown()) }).strict()),
+}).strict();
+
+/** Bound recursion and reject special object keys before any data enters application state. */
+function inspectJson(value: unknown, depth = 0, counter = { count: 0 }): void {
+  if (++counter.count > 100_000 || depth > 30) throw new Error('Слишком сложный файл проекта.');
+  if (typeof value === 'number' && !Number.isFinite(value)) throw new Error('Нечисловое значение в файле проекта.');
+  if (!value || typeof value !== 'object') return;
+  for (const [key, child] of Object.entries(value)) {
+    if (['__proto__', 'prototype', 'constructor'].includes(key)) throw new Error('Недопустимое поле проекта.');
+    inspectJson(child, depth + 1, counter);
+  }
+}
+
+export function parseProject(contents: string): ProjectDocument {
+  if (contents.length > MAX_PROJECT_BYTES) throw new Error('Проект больше 32 МБ.');
+  let raw: unknown;
+  try { raw = JSON.parse(contents); } catch { throw new Error('Файл не является JSON-проектом «Зацепления».'); }
+  inspectJson(raw);
+  if (!raw || typeof raw !== 'object' || (raw as { schema?: string }).schema !== PROJECT_SCHEMA)
+    throw new Error('Неизвестный формат проекта. Нужен файл .gear.json; STL и паспорт не являются файлом проекта.');
+  const parsed = documentSchema.safeParse(raw);
+  if (!parsed.success) throw new Error(`Не удалось прочитать проект: проверьте поле ${parsed.error.issues[0]?.path.join('.') || 'данных'}.`);
+  const doc = parsed.data;
+  const forms: ProjectForms = {};
+  for (const [key, form] of Object.entries(doc.forms)) {
+    const schema = formSchemas[key];
+    if (!schema) throw new Error(`Неизвестный раздел проекта: ${key}. Обновите приложение.`);
+    const result = schema.safeParse(form.values);
+    if (!result.success) throw new Error(`Повреждены данные раздела ${key}. Исходный проект не изменён.`);
+    forms[key] = { identity: form.identity, values: result.data };
+  }
+  const photo = forms.photo?.values as z.infer<typeof photoForm> | undefined;
+  if (!!photo?.image !== !!photo?.imageSize) throw new Error('Фотография и её размеры не согласованы.');
+  if (photo?.image && photo.imageSize) {
+    // Check PNG header dimensions before image decoding; remote images and SVG cannot enter a project.
+    const header = atob(photo.image.slice('data:image/png;base64,'.length, 'data:image/png;base64,'.length + 44));
+    const bytes = Uint8Array.from(header, c => c.charCodeAt(0));
+    const view = new DataView(bytes.buffer);
+    if (bytes.length < 24 || view.getUint32(0) !== 0x89504e47 || view.getUint32(4) !== 0x0d0a1a0a || view.getUint32(12) !== 0x49484452
+      || view.getUint32(16) !== photo.imageSize.width || view.getUint32(20) !== photo.imageSize.height)
+      throw new Error('Размеры PNG не совпадают с проектом.');
+    if (photo.region && (photo.region.x + photo.region.width > photo.imageSize.width || photo.region.y + photo.region.height > photo.imageSize.height))
+      throw new Error('Область детали выходит за фотографию.');
+  }
+  return { ...doc, forms };
+}
+
+export function snapshotJourney(state: JourneyState): SavedJourney {
+  const { stage, mode, manualDraft, manualSpan, manualSpanPending, manualFamily, manualFamilyPending, manualFamilyMethod, photoCycloidalHandoff, revision } = state;
+  return structuredClone({ stage, mode, manualDraft, manualSpan, manualSpanPending, manualFamily, manualFamilyPending, manualFamilyMethod, photoCycloidalHandoff, revision,
+    built: hasCurrentModel(state) && state.built ? { revision, mode: state.built.mode, params: state.built.params, origin: state.built.origin, evidence: state.built.evidence } : null });
+}
+
+export function newProject(id = crypto.randomUUID(), date = new Date().toISOString()): ProjectDocument {
+  return { schema: PROJECT_SCHEMA, appVersion: APP_VERSION, id, name: 'Новая деталь', createdAt: date, updatedAt: date, journey: snapshotJourney(initialJourney()), forms: {} };
+}
+
+/** Rebuild geometry with the current kernel. Saved checks and commercial choices are never imported as approval. */
+export function restoreProjectJourney(project: ProjectDocument): JourneyState {
+  const saved = project.journey;
+  const state: JourneyState = { ...initialJourney(), ...structuredClone(saved), built: null,
+    photoCycloidalHandoff: saved.photoCycloidalHandoff as PhotoCycloidalHandoff | null,
+    confirmedRevision: null, choice: null, error: null };
+  if (saved.built && saved.built.revision === saved.revision && saved.built.mode === saved.mode) {
+    try {
+      const mesh = buildModelMesh(saved.built.params), validation = validateMesh(mesh);
+      if (!validation.valid) throw new Error('Сетка не прошла повторную проверку.');
+      state.built = { ...structuredClone(saved.built), params: mesh.params as ModelParams, evidence: structuredClone(saved.built.evidence ?? null), mesh, validation };
+    } catch (error) { state.error = `Сохранённую модель нужно исправить: ${error instanceof Error ? error.message : 'ошибка геометрии'}`; }
+  }
+  state.stage = saved.stage === 'start' ? 'start' : state.built && ['review', 'delivery', 'checkout'].includes(saved.stage)
+    ? 'review' : saved.mode ? 'input' : 'start';
+  return state;
+}
+
+export const serializeProject = (project: ProjectDocument): string => JSON.stringify(project, null, 2);
+export const projectFilename = (name: string): string => `${name.replace(/[^\p{L}\p{N}._ -]/gu, '').trim().slice(0, 80) || 'gear-project'}.gear.json`;

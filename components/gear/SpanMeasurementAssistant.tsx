@@ -1,5 +1,6 @@
 "use client";
-import { useMemo, useRef, useState } from 'react';
+import { useProjectField } from './ProjectContext';
+import { useMemo, useRef } from 'react';
 import { Check, Ruler, ArrowRight } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { analyzeSpanMeasurement, selectSpanApplication } from '@/lib/spanMeasurement';
@@ -12,21 +13,21 @@ const number = (v: string) => v.trim() === '' ? NaN : Number(v);
 const fmt = (v: number, digits = 6) => (Object.is(Number(v.toFixed(digits)), -0) ? 0 : v)
   .toLocaleString('ru-RU', { maximumFractionDigits: digits });
 
-export function SpanMeasurementAssistant({ teeth, toolTipRadiusCoefficient, facts, seed, application, engaged,
+export function SpanMeasurementAssistant({ draftScope = 'manualSpan', draftIdentity = 'default', teeth, toolTipRadiusCoefficient, facts, seed, application, engaged,
   onDraftChange, onApply, onCancel }: {
-  teeth: number; toolTipRadiusCoefficient: number; facts?: Facts; seed?: SpanAssistantSeed;
+  draftScope?: string; draftIdentity?: string; teeth: number; toolTipRadiusCoefficient: number; facts?: Facts; seed?: SpanAssistantSeed;
   application: SpanApplication | null; engaged: boolean;
   onDraftChange: () => void; onApply: (application: SpanApplication) => void; onCancel: () => void;
 }) {
   const disclosure = useRef<HTMLDetailsElement>(null), resultHeading = useRef<HTMLHeadingElement>(null);
-  const [k, setK] = useState(''), [w, setW] = useState(''), [nextW, setNextW] = useState('');
-  const [diameter, setDiameter] = useState(seed?.diameter !== undefined ? String(seed.diameter) : '');
-  const [alpha, setAlpha] = useState(seed?.pressureAngle !== undefined ? String(seed.pressureAngle) : '');
-  const [method, setMethod] = useState<SpanMeasurementInput['tipDiameterMethod']>(seed?.diameterMethod ?? 'unknown');
-  const [ew, setEw] = useState(''), [enext, setEnext] = useState(''), [ed, setEd] = useState('');
-  const [partConfirmed, setPartConfirmed] = useState(false), [standardConfirmed, setStandardConfirmed] = useState(false);
-  const [angleConfirmed, setAngleConfirmed] = useState(false), [setupConfirmed, setSetupConfirmed] = useState(false);
-  const [calculated, setCalculated] = useState(false);
+  const [k, setK] = useProjectField(draftScope, 'k', '', draftIdentity), [w, setW] = useProjectField(draftScope, 'w', '', draftIdentity), [nextW, setNextW] = useProjectField(draftScope, 'nextW', '', draftIdentity);
+  const [diameter, setDiameter] = useProjectField(draftScope, 'diameter', seed?.diameter !== undefined ? String(seed.diameter) : '', draftIdentity);
+  const [alpha, setAlpha] = useProjectField(draftScope, 'alpha', seed?.pressureAngle !== undefined ? String(seed.pressureAngle) : '', draftIdentity);
+  const [method, setMethod] = useProjectField<SpanMeasurementInput['tipDiameterMethod']>(draftScope, 'method', seed?.diameterMethod ?? 'unknown', draftIdentity);
+  const [ew, setEw] = useProjectField(draftScope, 'ew', '', draftIdentity), [enext, setEnext] = useProjectField(draftScope, 'enext', '', draftIdentity), [ed, setEd] = useProjectField(draftScope, 'ed', '', draftIdentity);
+  const [partConfirmed, setPartConfirmed] = useProjectField(draftScope, 'partConfirmed', false, draftIdentity), [standardConfirmed, setStandardConfirmed] = useProjectField(draftScope, 'standardConfirmed', false, draftIdentity);
+  const [angleConfirmed, setAngleConfirmed] = useProjectField(draftScope, 'angleConfirmed', false, draftIdentity), [setupConfirmed, setSetupConfirmed] = useProjectField(draftScope, 'setupConfirmed', false, draftIdentity);
+  const [calculated, setCalculated] = useProjectField(draftScope, 'calculated', false, draftIdentity);
   const edit = <T,>(set: (v: T) => void, value: T) => { onDraftChange(); setCalculated(false); set(value); };
   const input: SpanMeasurementInput = useMemo(() => ({ kind: 'spur', teeth, spanTeeth: number(k),
     pressureAngleDeg: alpha === '' ? null : number(alpha), pressureAngleConfirmed: angleConfirmed,

@@ -1,4 +1,5 @@
 "use client";
+import { useProjectField } from './ProjectContext';
 import { useId, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent } from 'react';
 import { Check, Ruler, RotateCcw, Undo2, ZoomIn } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -15,6 +16,7 @@ export interface PhotoScaleMeasurement {
   sources: typeof photoScaleSources;
 }
 interface Props {
+  draftIdentity?: string;
   active?: boolean;
   image: string;
   width: number;
@@ -34,12 +36,12 @@ const formatBound = (value: number, edge: 'lower' | 'upper') => {
 };
 
 /** Remounted by the wizard for each new image and changed gear family. */
-export function PhotoScale({ active = true, image, width, height, internal, isApplied, onMeasured, onInvalidated }: Props) {
+export function PhotoScale({ draftIdentity = 'default', active = true, image, width, height, internal, isApplied, onMeasured, onInvalidated }: Props) {
   const [open, setOpen] = useState(false), [zoom, setZoom] = useState(1);
-  const [referencePoints, setReferencePoints] = useState<PhotoPoint[]>([]), [tipPoints, setTipPoints] = useState<PhotoPoint[]>([]);
-  const [referenceLength, setReferenceLength] = useState(''), [referenceTolerance, setReferenceTolerance] = useState('');
-  const [pixelError, setPixelError] = useState<string | null>(null), [selectionErrors, setSelectionErrors] = useState<number[]>([]);
-  const [coplanar, setCoplanar] = useState(false), [axial, setAxial] = useState(false), [confirmedTips, setConfirmedTips] = useState(false);
+  const [referencePoints, setReferencePoints] = useProjectField<PhotoPoint[]>('photoScale', 'referencePoints', [], draftIdentity), [tipPoints, setTipPoints] = useProjectField<PhotoPoint[]>('photoScale', 'tipPoints', [], draftIdentity);
+  const [referenceLength, setReferenceLength] = useProjectField('photoScale', 'referenceLength', '', draftIdentity), [referenceTolerance, setReferenceTolerance] = useProjectField('photoScale', 'referenceTolerance', '', draftIdentity);
+  const [pixelError, setPixelError] = useProjectField<string | null>('photoScale', 'pixelError', null, draftIdentity), [selectionErrors, setSelectionErrors] = useProjectField<number[]>('photoScale', 'selectionErrors', [], draftIdentity);
+  const [coplanar, setCoplanar] = useProjectField('photoScale', 'coplanar', false, draftIdentity), [axial, setAxial] = useProjectField('photoScale', 'axial', false, draftIdentity), [confirmedTips, setConfirmedTips] = useProjectField('photoScale', 'confirmedTips', false, draftIdentity);
   const [cursor, setCursor] = useState<PhotoPoint>({ x: width / 2, y: height / 2 }), [focused, setFocused] = useState(false);
   const svgRef = useRef<SVGSVGElement>(null), instructionsId = useId();
   // A suggested selection error of two CSS pixels, converted when each point is placed.

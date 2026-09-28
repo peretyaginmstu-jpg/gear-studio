@@ -1,3 +1,4 @@
+import { APP_VERSION } from '../lib/appVersion.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { checkoutSnapshot, initialJourney, journeyFromHash, transitionJourney, type JourneyState } from '../lib/journey.ts';
@@ -196,7 +197,7 @@ test('fit checkout STL, passport and print brief share the selected representati
   const brief = createPrintBrief(model.mesh, model.validation, defaultPrintSettings, model, '2026-09-28T00:00:00.000Z');
   assert.deepEqual(brief.parameters, prepared.passport.parameters);
   assert.deepEqual(brief.evidence, prepared.passport.evidence); assert.equal(brief.origin, prepared.passport.origin);
-  assert.equal(brief.orderStatus, 'Файл задания. Заказ не отправлен.'); assert.equal(brief.appVersion, '0.18.0');
+  assert.equal(brief.orderStatus, 'Файл задания. Заказ не отправлен.'); assert.equal(brief.appVersion, APP_VERSION);
   s = transitionJourney(s, { type: 'edit-manual-span' }); assert.equal(checkoutSnapshot(s), null);
   assert.equal(prepared.passport.parameters.module, application.candidate.parameters.module);
 });

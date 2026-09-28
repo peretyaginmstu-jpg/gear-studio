@@ -1,6 +1,7 @@
 "use client";
+import { useProjectField } from './ProjectContext';
 
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { AlertTriangle, Check, Download, Link2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -41,8 +42,8 @@ export function PairDialog({ open, onOpenChange, params }: {
 }
 
 function PairContent({ params }: { params: ModelParams }) {
-  const [second, setSecond] = useState(() => initialPairMate(params));
-  const [center, setCenter] = useState('');
+  const [second, setSecond] = useProjectField('pair', 'second', () => initialPairMate(params), JSON.stringify(params));
+  const [center, setCenter] = useProjectField('pair', 'center', '', JSON.stringify(params));
   const centerDistanceMm = center.trim() === '' ? undefined : Number(center);
   const report = useMemo(() => analyzeGearPair({ first: params, second, centerDistanceMm }), [params, second, centerDistanceMm]);
   const bevelPair = params.kind === 'bevel';
