@@ -11,7 +11,7 @@ export function ModelChips({ params }: { params: ModelParams }) {
   return (
           <div className="model-chips"><span className="model-family">{modelNames[params.kind]}</span>
             <span className="parameter-chip">{isWorm ? 'z₁' : 'z'} <strong>{fmt(isWorm ? params.wormStarts ?? 1 : params.teeth, 0)}</strong></span>
-            <span className="parameter-chip">{moduleSymbol} <strong>{fmt(params.module)} мм</strong></span>
+            <span className="parameter-chip">{moduleSymbol} <strong>{fmt(params.module, 6)} мм</strong></span>
             <span className="parameter-chip">{isWorm ? 'L' : 'b'} <strong>{fmt(params.width)} мм</strong></span>
           </div>
   );
@@ -23,7 +23,7 @@ export function ModelSummary({ params }: { params: ModelParams }) {
         <dl className="parameter-summary">
           <div><dt>Тип зацепления</dt><dd>{modelNames[params.kind]}</dd></div>
           <div><dt>{isWorm ? 'Число заходов' : 'Число зубьев'}</dt><dd>{isWorm ? 'z₁' : 'z'}&nbsp; {fmt(isWorm ? params.wormStarts ?? 1 : params.teeth, 0)}</dd></div>
-          <div><dt>{isBevel ? 'Внешний модуль' : isWorm ? 'Осевой модуль' : isHelicalKind(params.kind) ? 'Нормальный модуль' : 'Модуль'}</dt><dd>{moduleSymbol}&nbsp; {fmt(params.module)} мм</dd></div>
+          <div><dt>{isBevel ? 'Внешний модуль' : isWorm ? 'Осевой модуль' : isHelicalKind(params.kind) ? 'Нормальный модуль' : 'Модуль'}</dt><dd>{moduleSymbol}&nbsp; {fmt(params.module, 6)} мм</dd></div>
           <div><dt>{isBevel ? 'По образующей' : isWorm ? 'Длина нарезки' : 'Ширина'}</dt><dd>{isWorm ? 'L' : 'b'}&nbsp; {fmt(params.width)} мм</dd></div>
           <div><dt>{internal ? 'Обод' : rack ? 'Основание' : 'Отверстие'}</dt><dd>{!internal && !rack && '⌀ '}{fmt(internal ? params.rimThickness ?? 3 * params.module : rack ? params.rackBaseHeight ?? 3 * params.module : params.bore)} мм</dd></div>
         </dl>

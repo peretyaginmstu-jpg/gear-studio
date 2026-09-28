@@ -33,7 +33,7 @@ function ExportContent({ params, preset, origin, evidence }: { params: ModelPara
     return () => { disposed = true; clearTimeout(timer); if (url) { const old = url; setTimeout(() => URL.revokeObjectURL(old), 60_000); } };
   }, [params, preset, origin, evidence]);
   return <DialogContent className="engineering-dialog export-dialog">
-    <DialogHeader><div className="dialog-kicker"><Download size={17} /> ЭКСПОРТ МОДЕЛИ</div><DialogTitle>{exportPresets[preset].title}</DialogTitle><DialogDescription>{modelNames[params.kind]} · {params.kind === 'bevel' ? 'внешний mₑ' : params.kind === 'worm' ? 'mₓ' : params.kind === 'cycloidal' ? 'm' : 'mₙ'} {params.module.toLocaleString('ru-RU')} мм · {exportPresets[preset].detail}</DialogDescription></DialogHeader>
+    <DialogHeader><div className="dialog-kicker"><Download size={17} /> ЭКСПОРТ МОДЕЛИ</div><DialogTitle>{exportPresets[preset].title}</DialogTitle><DialogDescription>{modelNames[params.kind]} · {params.kind === 'bevel' ? 'внешний mₑ' : params.kind === 'worm' ? 'mₓ' : params.kind === 'cycloidal' ? 'm' : 'mₙ'} {params.module.toLocaleString('ru-RU', { maximumFractionDigits: 6 })} мм · {exportPresets[preset].detail}</DialogDescription></DialogHeader>
     <p>Бесплатно{preset === 'pro' ? ' в раннем доступе' : ''}. Импортируйте STL в миллиметрах. Паспорт ниже описывает именно этот файл и его фактическую сетку.</p>
     <p>Детализация усиливает дискретизацию кривых там, где это применимо. У реек и некоторых других профилей число треугольников может совпасть с Standard. Это не класс точности изготовления.</p>
     {!prepared && !error && <p className="inline-status" role="status"><LoaderCircle className="spin-icon" size={17} /> Строим и проверяем сетку…</p>}

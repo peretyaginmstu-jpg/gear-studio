@@ -5,16 +5,18 @@ import {Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription} from '@
 import {Select,SelectContent,SelectItem,SelectTrigger,SelectValue} from '@/components/ui/select';
 import {toast} from 'sonner';
 import type {MeshValidation} from '@/lib/gearMath';
-import {modelDimensionsForReport,modelSpatialGeometryForReport,type ModelMesh} from '@/lib/model';
+import type {ModelMesh} from '@/lib/model';
+import type {ModelProvenance} from '@/lib/modelExport';
+import {createPrintBrief} from '@/lib/printBrief';
 import {downloadBlob} from '@/lib/download';
 import {assessPrint,defaultPrintSettings,type PrintSettings} from '@/lib/printability';
-export function PrintDialog({open,onOpenChange,mesh,validation}:{open:boolean;onOpenChange:(b:boolean)=>void;mesh:ModelMesh|null;validation:MeshValidation|null}){
+export function PrintDialog({open,onOpenChange,mesh,validation,provenance}:{open:boolean;onOpenChange:(b:boolean)=>void;mesh:ModelMesh|null;validation:MeshValidation|null;provenance:ModelProvenance}){
  const [settings,setSettings]=useState(defaultPrintSettings);const result=useMemo(()=>{try{return mesh&&validation?{data:assessPrint(mesh,validation,settings),error:null}:{data:null,error:'Сначала задайте корректную геометрию.'}}catch(e){return {data:null,error:e instanceof Error?e.message:'Ошибка настроек.'}}},[mesh,validation,settings]);
  function setNumber(key:keyof PrintSettings,n:number){setSettings(s=>({...s,[key]:n}))}
  function exportJob(){
-  if(!result.data||!mesh)return;
+  if(!result.data||!mesh||!validation)return;
   try{
-   const data={schema:'zatseplenie.print-brief.v5',appVersion:'0.7.0',createdAt:new Date().toISOString(),units:'mm',parameters:mesh.params,dimensions:modelDimensionsForReport(mesh),wormDimensions:'wormDimensions' in mesh?mesh.wormDimensions:null,cycloidalDimensions:'cycloidalDimensions' in mesh?mesh.cycloidalDimensions:null,cycloidalDiagnostics:'cycloidalDiagnostics' in mesh?mesh.cycloidalDiagnostics:null,bevelDimensions:'bevelDimensions' in mesh?mesh.bevelDimensions:null,bevelDiagnostics:'bevelDiagnostics' in mesh?mesh.bevelDiagnostics:null,spatialGeometry:modelSpatialGeometryForReport(mesh),internalCutterGeometry:mesh.internalCutterGeometry??null,internalRootDiagnostics:mesh.profile.internalRootDiagnostics??null,settings,assessment:result.data,geometryWarnings:mesh.warnings,customerInputRequired:['Назначение: макет / рабочая передача','Крутящий момент, обороты и срок службы','Температура, смазка, ответная деталь','Посадки и допуски по чертежу','Пробная печать и проверка сопряжения'],orderStatus:'Файл задания. Заказ не отправлен.'};
+   const data=createPrintBrief(mesh,validation,settings,provenance);
    downloadBlob(JSON.stringify(data,null,2),'application/json',`gear-print-brief-${mesh.params.kind}.json`);
    toast.success('Скачивание задания запрошено. Проверьте загрузки браузера.');
   }catch(e){toast.error(e instanceof Error?e.message:'Не удалось подготовить задание.');}

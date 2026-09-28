@@ -1,6 +1,7 @@
 import { buildModelMesh, defaultModel, type ModelMesh, type ModelParams } from './model.ts';
 import { validateMesh, type MeshValidation } from './gearMath.ts';
 import type { ExportPreset, ModelProvenance } from './modelExport.ts';
+import { spanApplicationMatches, type SpanApplication } from './spanMeasurement.ts';
 
 export type JourneyStage = 'start' | 'input' | 'review' | 'delivery' | 'checkout';
 export type InputMode = 'manual' | 'photo';
@@ -16,6 +17,8 @@ export interface JourneyState {
   stage: JourneyStage;
   mode: InputMode | null;
   manualDraft: ModelParams;
+  manualSpan: SpanApplication | null;
+  manualSpanPending: boolean;
   revision: number;
   built: BuiltModel | null;
   confirmedRevision: number | null;
@@ -25,6 +28,9 @@ export interface JourneyState {
 export type JourneyAction =
   | { type: 'choose-input'; mode: InputMode }
   | { type: 'edit-manual'; params: ModelParams }
+  | { type: 'edit-manual-span' }
+  | { type: 'apply-manual-span'; application: SpanApplication }
+  | { type: 'clear-manual-span' }
   | { type: 'edit-photo' }
   | { type: 'build'; params: ModelParams; origin: string; evidence: unknown }
   | { type: 'confirm' }
@@ -32,7 +38,7 @@ export type JourneyAction =
   | { type: 'navigate'; stage: JourneyStage };
 
 export function initialJourney(): JourneyState {
-  return { stage: 'start', mode: null, manualDraft: defaultModel(), revision: 0,
+  return { stage: 'start', mode: null, manualDraft: defaultModel(), manualSpan: null, manualSpanPending: false, revision: 0,
     built: null, confirmedRevision: null, choice: null, error: null };
 }
 export const hasCurrentModel = (s: JourneyState): boolean => !!s.built && s.built.revision === s.revision && s.built.validation.valid;
@@ -56,21 +62,39 @@ export function transitionJourney(s: JourneyState, action: JourneyAction): Journ
       const next = s.mode !== null && s.mode !== action.mode ? changed(s) : { ...s, error: null };
       const manualDraft = action.mode === 'manual' && s.built?.mode === 'photo'
         ? structuredClone(s.built.params) : s.manualDraft;
-      return { ...next, mode: action.mode, manualDraft, stage: 'input' };
+      return { ...next, mode: action.mode, manualDraft, stage: 'input',
+        ...(manualDraft !== s.manualDraft ? { manualSpan: null, manualSpanPending: false } : {}) };
     }
     case 'edit-manual':
       if (s.mode !== 'manual' || sameParams(s.manualDraft, action.params)) return s;
-      return { ...changed(s), manualDraft: structuredClone(action.params) };
+      return { ...changed(s), manualDraft: structuredClone(action.params),
+        manualSpan: s.manualSpan && spanApplicationMatches(s.manualSpan, action.params) ? s.manualSpan : null,
+        manualSpanPending: action.params.kind === 'spur' ? s.manualSpanPending : false };
+    case 'edit-manual-span':
+      return s.mode === 'manual' && s.manualDraft.kind === 'spur'
+        ? { ...changed(s), manualSpan: null, manualSpanPending: true } : s;
+    case 'apply-manual-span':
+      if (s.mode !== 'manual' || s.manualDraft.kind !== 'spur') return s;
+      return { ...changed(s), manualDraft: { ...s.manualDraft, ...structuredClone(action.application.candidate.parameters) },
+        manualSpan: structuredClone(action.application), manualSpanPending: false };
+    case 'clear-manual-span':
+      return s.manualSpan || s.manualSpanPending ? { ...changed(s), manualSpan: null, manualSpanPending: false } : s;
     case 'edit-photo': return s.mode === 'photo' ? changed(s) : s;
     case 'build': {
       if (s.stage !== 'input' || !s.mode) return s;
+      if (s.mode === 'manual' && (s.manualSpanPending || (s.manualSpan && !spanApplicationMatches(s.manualSpan, action.params))))
+        return { ...s, error: 'Измерения изменены. Рассчитайте и примените их заново или явно вернитесь к прямому вводу параметров.' };
       try {
         const mesh = buildModelMesh(structuredClone(action.params)), validation = validateMesh(mesh);
         if (!validation.valid) throw new Error('Сетка не прошла проверку. Измените исходные данные.');
         // The snapshot owns its input and evidence; future draft edits cannot mutate a download.
+        const spanEvidence = s.mode === 'manual' && s.manualSpan ? {
+          origin: 'Общая нормаль: модуль, смещение и утонение рассчитаны по подтверждённым измерениям; тело задано вручную.',
+          evidence: { spanMeasurement: s.manualSpan, bodyDimensions: { widthMm: action.params.width, boreMm: action.params.bore, source: 'manual' } },
+        } : action;
         const built: BuiltModel = { revision: s.revision, mode: s.mode,
           params: structuredClone(mesh.params), mesh, validation,
-          origin: action.origin, evidence: structuredClone(action.evidence) };
+          origin: spanEvidence.origin, evidence: structuredClone(spanEvidence.evidence) };
         return { ...s, stage: 'review', built, confirmedRevision: null, choice: null, error: null };
       } catch (e) {
         return { ...s, built: null, confirmedRevision: null, choice: null,

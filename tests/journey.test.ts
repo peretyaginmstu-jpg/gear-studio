@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import { checkoutSnapshot, initialJourney, journeyFromHash, transitionJourney, type JourneyState } from '../lib/journey.ts';
 import { defaultModel } from '../lib/model.ts';
 import { prepareModelExport } from '../lib/modelExport.ts';
+import { analyzeSpanMeasurement, selectSpanApplication, type SpanMeasurementInput } from '../lib/spanMeasurement.ts';
+import { createPrintBrief } from '../lib/printBrief.ts';
+import { defaultPrintSettings } from '../lib/printability.ts';
 
 const enter = () => transitionJourney(initialJourney(), { type: 'choose-input', mode: 'manual' });
 const build = (state = enter()) => transitionJourney(state, { type: 'build', params: state.manualDraft, origin: 'Задано вручную', evidence: null });
@@ -72,4 +75,58 @@ test('checkout exports its captured model and quality; later changes cannot sile
   assert.equal(prepared.passport.parameters.module, 2);
   assert.equal(prepared.passport.artifact.preset, 'pro');
   assert.equal(new DataView(prepared.stl).getUint32(80, true), prepared.passport.artifact.triangles);
+});
+
+const spanInput = (fit = false): SpanMeasurementInput => ({ kind: 'spur', teeth: 24, spanTeeth: 3,
+  pressureAngleDeg: 20, pressureAngleConfirmed: true, tipDiameterMethod: 'tip_circle',
+  spanMm: fit ? 15.44 : 15.357747658604712, nextSpanMm: fit ? 21.34 : 21.262010526791812, tipDiameterMm: 52,
+  errorBounds: { spanMm: .01, nextSpanMm: .01, tipDiameterMm: .01 },
+  confirmations: { teeth: true, involute: true, standardTip: true, measurementSetup: true }, toolTipRadiusCoefficient: .3,
+});
+
+test('editing span measurements invalidates a confirmed model and blocks building old template values', () => {
+  let s = confirmed();
+  s = transitionJourney(s, { type: 'edit-manual-span' });
+  assert.equal(s.built, null); assert.equal(s.confirmedRevision, null); assert.equal(s.manualSpanPending, true);
+  s = build(s); assert.equal(s.stage, 'input'); assert.equal(s.built, null); assert.match(s.error!, /Измерения изменены/);
+  assert.equal(journeyFromHash(s, '#checkout').stage, 'input');
+  s = transitionJourney(s, { type: 'clear-manual-span' });
+  s = build(s); assert.equal(s.stage, 'review', 'explicit return to direct input can build its displayed values');
+});
+
+test('explicit span application preserves evidence through body edits and navigation but drops it after a profile edit', () => {
+  const application = selectSpanApplication(analyzeSpanMeasurement(spanInput()), 'exact-inverse');
+  let s = transitionJourney(enter(), { type: 'apply-manual-span', application });
+  const accepted = s.manualDraft.module;
+  application.candidate.parameters.module = 99;
+  assert.equal(s.manualSpan!.candidate.parameters.module, accepted, 'application is owned by the draft');
+  s = transitionJourney(s, { type: 'edit-manual', params: { ...s.manualDraft, width: 12, bore: 6 } });
+  assert.ok(s.manualSpan); s = build(s);
+  assert.equal(s.built!.params.width, 12); assert.match(s.built!.origin, /Общая нормаль/);
+  const evidence = s.built!.evidence as { spanMeasurement: typeof application; bodyDimensions: { widthMm: number; boreMm: number } };
+  assert.equal(evidence.bodyDimensions.widthMm, 12); assert.equal(evidence.bodyDimensions.boreMm, 6);
+  assert.equal(evidence.spanMeasurement.input.spanMm, spanInput().spanMm);
+  s = journeyFromHash(s, '#start'); s = journeyFromHash(s, '#manual'); assert.ok(s.manualSpan);
+  s = transitionJourney(s, { type: 'edit-manual', params: { ...s.manualDraft, profileShift: .1 } });
+  assert.equal(s.manualSpan, null); assert.equal(s.built, null); assert.equal(s.confirmedRevision, null);
+});
+
+test('fit checkout STL, passport and print brief share the selected representative, not the raw diameter or a preview guess', () => {
+  const application = selectSpanApplication(analyzeSpanMeasurement(spanInput(true)), 'bounded-zero-thinning-fit');
+  let s = transitionJourney(enter(), { type: 'apply-manual-span', application });
+  s = build(s); s = transitionJourney(s, { type: 'confirm' });
+  s = transitionJourney(s, { type: 'choose-delivery', choice: { kind: 'file', preset: 'pro' } });
+  s = transitionJourney(s, { type: 'navigate', stage: 'checkout' });
+  const model = checkoutSnapshot(s)!.model, prepared = prepareModelExport(model.params, 'pro', model);
+  assert.equal(prepared.passport.parameters.module, application.candidate.parameters.module);
+  assert.equal(prepared.passport.parameters.backlash, 0);
+  assert.ok(Math.abs(prepared.passport.dimensions.tipDiameter - application.candidate.representativeReadings.tipDiameterMm) < 1e-12);
+  assert.notEqual(prepared.passport.dimensions.tipDiameter, application.input.tipDiameterMm);
+  assert.equal(new DataView(prepared.stl).getUint32(80, true), prepared.passport.artifact.triangles);
+  const brief = createPrintBrief(model.mesh, model.validation, defaultPrintSettings, model, '2026-09-28T00:00:00.000Z');
+  assert.deepEqual(brief.parameters, prepared.passport.parameters);
+  assert.deepEqual(brief.evidence, prepared.passport.evidence); assert.equal(brief.origin, prepared.passport.origin);
+  assert.equal(brief.orderStatus, 'Файл задания. Заказ не отправлен.'); assert.equal(brief.appVersion, '0.8.0');
+  s = transitionJourney(s, { type: 'edit-manual-span' }); assert.equal(checkoutSnapshot(s), null);
+  assert.equal(prepared.passport.parameters.module, application.candidate.parameters.module);
 });

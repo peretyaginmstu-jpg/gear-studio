@@ -25,6 +25,6 @@ export function CheckoutActions({ model, choice, onChange }: { model: BuiltModel
     <button className="inline-link" onClick={onChange}>Изменить способ получения</button>
     <p className="delivery-note"><Info size={19} />{isPrint ? 'Задание скачивается на ваше устройство. Заказ исполнителю не отправляется; стоимость изготовления и оплата будут отдельным шагом позже.' : 'Оплата не требуется. Скачивание не подтверждает пригодность детали под нагрузкой: перед изготовлением проверьте сопряжение.'}</p>
     <ExportDialog open={exportPreset !== null} onOpenChange={open => { if (!open) setExportPreset(null); }} params={model.params} preset={exportPreset ?? 'standard'} origin={model.origin} evidence={model.evidence} />
-    <PrintDialog open={printOpen} onOpenChange={setPrintOpen} mesh={model.mesh} validation={model.validation} />
+    <PrintDialog open={printOpen} onOpenChange={setPrintOpen} mesh={model.mesh} validation={model.validation} provenance={model} />
   </>;
 }

@@ -10,6 +10,8 @@ import { PhotoScale, type PhotoScaleMeasurement } from './PhotoScale';
 import { useActivePopup } from './useActivePopup';
 import { defaultInternalCutter } from '@/lib/generatedInternalRoot';
 import { InternalCutterFields, type InternalCutterInputs } from './InternalCutterFields';
+import { SpanMeasurementAssistant } from './SpanMeasurementAssistant';
+import type { SpanApplication, SpanMeasurementInput } from '@/lib/spanMeasurement';
 
 type ApplyParams = Partial<ModelParams> & { kind: InferredGearKind };
 const inferredKinds: InferredGearKind[] = ['spur', 'helical', 'herringbone', 'internal', 'internal-helical', 'rack', 'helical-rack'];
@@ -31,6 +33,9 @@ export function PhotoWizard({ onApply, onManual, onDraftChange, active = true }:
   const [width, setWidth] = useState(''), [body, setBody] = useState('');
   const [internalCutter, setInternalCutter] = useState<InternalCutterInputs>({ ...defaultInternalCutter });
   const [source, setSource] = useState<MeasurementSource>('user_confirmation');
+  const [spanApplication, setSpanApplication] = useState<SpanApplication | null>(null), [spanPending, setSpanPending] = useState(false);
+  const invalidateSpan = () => { if (spanApplication || spanPending) { setSpanApplication(null); setSpanPending(true); } };
+  const editProfile = <T,>(setter: (value: T) => void, value: T) => { invalidateSpan(); edit(setter, value); };
   const supported = inferredKinds.includes(kind as InferredGearKind);
   const rack = supported && isRackKind(kind as InferredGearKind), internal = supported && isInternalKind(kind as InferredGearKind);
   const helical = supported && isHelicalKind(kind as InferredGearKind);
@@ -39,6 +44,7 @@ export function PhotoWizard({ onApply, onManual, onDraftChange, active = true }:
     setDiameterMethod('unknown'); setBeta(''); setAlpha(''); setShift(''); setStandard(false); setSymmetric(false);
     setWidth(''); setBody(''); setSource('user_confirmation'); setPhotoMeasurement(null);
     setInternalCutter({ ...defaultInternalCutter });
+    setSpanApplication(null); setSpanPending(false);
   };
   const loadFile = async (file?: File) => {
     if (!file) return;
@@ -89,28 +95,36 @@ export function PhotoWizard({ onApply, onManual, onDraftChange, active = true }:
     };
   }, [analysis, supported, kind, source, profile, teeth, confirmedTeeth, damageHypothesisTransferred, diameter, diameterMethod, pitch, beta, alpha, shift, standard, rack, helical, photoMeasurement]);
   const invalidatePhotoMeasurement = () => {
-    onDraftChange();
+    onDraftChange(); invalidateSpan();
     if (photoMeasurement) { setDiameter(''); setDiameterMethod('unknown'); }
     setPhotoMeasurement(null);
   };
   const setManualDiameter = (value: string) => {
-    onDraftChange();
+    onDraftChange(); invalidateSpan();
     if (photoMeasurement) setDiameterMethod('unknown');
     setPhotoMeasurement(null); setDiameter(value);
   };
   const result = useMemo(() => inferGearFromMeasurements(input), [input]);
+  const spanPath = kind === 'spur' && (spanPending || spanApplication !== null);
+  const profileParameters = spanPath ? spanApplication?.candidate.parameters ?? null : result.status === 'ready' ? result.parameters : null;
+  const calculatedModule = spanPath ? spanApplication?.candidate.parameters.module : result.calculation?.normalModuleMm;
   const bodyValid = width !== '' && Number(width) > 0 && body !== '' && (rack || internal ? Number(body) > 0 : Number(body) >= 0);
-  const ready = supported && result.status === 'ready' && bodyValid && confirmedTeeth && teeth !== '' && (kind !== 'herringbone' || symmetric);
+  const ready = supported && profileParameters !== null && bodyValid && confirmedTeeth && teeth !== '' && (kind !== 'herringbone' || symmetric);
   const apply = () => {
-    if (!ready || result.status !== 'ready') return;
-    const patch: ApplyParams = { ...result.parameters, teeth: Number(teeth), width: Number(width), backlash: 0,
+    if (!ready || !profileParameters) return;
+    const patch: ApplyParams = { ...profileParameters, teeth: Number(teeth), width: Number(width), backlash: spanPath ? spanApplication!.candidate.parameters.backlash : 0,
       ...(kind === 'internal' ? internalCutter : {}),
       ...(rack ? { rackBaseHeight: Number(body) } : internal ? { rimThickness: Number(body) } : { bore: Number(body) }) };
     try {
       buildModelMesh({ ...defaultModel(patch.kind), ...patch });
-      onApply(patch, 'Фото и подтверждённые исходные данные; модуль рассчитан без округления.', {
-        method: analysis?.damageHypothesis ? 'confirmed-measurements-with-damage-hypothesis-v4' : photoMeasurement ? 'confirmed-measurements-with-photo-scale-v3' : 'confirmed-measurements-v2', input, calculation: result.calculation, provenance: result.provenance,
-        ...(photoMeasurement ? { photoMeasurement: { ...photoMeasurement, sourceImage: imageSize?.source } } : {}),
+      onApply(patch, spanPath ? 'Фото, подтверждённые данные и общая нормаль; модуль, смещение и утонение рассчитаны без округления.' : 'Фото и подтверждённые исходные данные; модуль рассчитан без округления.', {
+        method: spanPath ? 'confirmed-photo-with-span-measurement-v1' : analysis?.damageHypothesis ? 'confirmed-measurements-with-damage-hypothesis-v4' : photoMeasurement ? 'confirmed-measurements-with-photo-scale-v3' : 'confirmed-measurements-v2',
+        input: spanPath ? { kind: input.kind, profileType: input.profileType, toothCount: input.toothCount, standardAddendum: input.standardAddendum } : input,
+        calculation: spanPath ? { method: 'span-measurement', parameters: spanApplication!.candidate.parameters, representativeReadings: spanApplication!.candidate.representativeReadings } : result.calculation,
+        provenance: spanPath ? { profileParameters: 'derived-from-explicitly-applied-span-measurements' } : result.provenance,
+        ...(spanPath ? { spanMeasurement: spanApplication } : {}),
+        ...(photoMeasurement ? { photoMeasurement: { ...photoMeasurement, sourceImage: imageSize?.source,
+          ...(spanPath ? { rawDiameterEqualsSpanReading: photoMeasurement.result.diameterMm === spanApplication!.input.tipDiameterMm } : {}) } } : {}),
         ...(analysis ? { photoAnalysisEvidence: {
           algorithm: analysis.diagnostics.algorithm, status: analysis.status, sourceImage: imageSize?.source,
           workingImage: imageSize ? { width: imageSize.width, height: imageSize.height } : null,
@@ -123,7 +137,7 @@ export function PhotoWizard({ onApply, onManual, onDraftChange, active = true }:
         } } : {}),
         bodyDimensions: { widthMm: Number(width), ...(rack ? { rackBaseHeightMm: Number(body) } : internal ? { rimThicknessMm: Number(body) } : { boreMm: Number(body) }), source },
         ...(kind === 'internal' ? { internalCutterAssumption: { parameters: { ...internalCutter }, source: 'specified-or-assumed; not-inferred-from-photo' } } : {}),
-        reconstructionAssumptions: ['Утонение зуба принято 0; посадочные допуски не восстановлены.', 'Переходы у основания и технологические детали не измерены по фотографии.', ...(kind === 'internal' ? ['Переходная кривая рассчитана по принятому долбяку; параметры инструмента показаны на шаге размеров и не определены по фото.'] : []), ...(kind === 'herringbone' ? ['Равные половины шеврона, без центральной канавки.'] : [])],
+        reconstructionAssumptions: [spanPath ? 'Утонение получено из явно выбранного решения по общей нормали; посадочные допуски не восстановлены.' : 'Утонение зуба принято 0; посадочные допуски не восстановлены.', 'Переходы у основания и технологические детали не измерены по фотографии.', ...(kind === 'internal' ? ['Переходная кривая рассчитана по принятому долбяку; параметры инструмента показаны на шаге размеров и не определены по фото.'] : []), ...(kind === 'herringbone' ? ['Равные половины шеврона, без центральной канавки.'] : [])],
       });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Эти параметры выходят за область модели.');
@@ -131,7 +145,7 @@ export function PhotoWizard({ onApply, onManual, onDraftChange, active = true }:
     }
   };
   const typeReady = supported && confirmedTeeth && Number.isInteger(Number(teeth)) && Number(teeth) >= (rack ? 1 : 6) && Number(teeth) <= 250;
-  const scaleReady = result.status === 'ready' && (kind !== 'herringbone' || symmetric);
+  const scaleReady = profileParameters !== null && (kind !== 'herringbone' || symmetric);
   const canContinue = step === 0 ? !!image && !!analysis && !busy : step === 1 ? typeReady : scaleReady;
   const stepTitles = ['Добавьте фото детали', 'Уточните тип и число зубьев', 'Подтвердите масштаб и профиль', 'Размеры тела и построение'];
   return <div className="photo-wizard">
@@ -157,7 +171,7 @@ export function PhotoWizard({ onApply, onManual, onDraftChange, active = true }:
         <p>С шаблоном согласуются {analysis.damageHypothesis.supportedTeeth} из {analysis.damageHypothesis.toothCount} ожидаемых участков ({Math.round(100 * analysis.damageHypothesis.visibleToothFraction)}%). Это гипотеза для {analysis.damageHypothesis.boundary === 'inner' ? 'внутреннего' : 'наружного'} контура, включая возможные утраченные зубья.</p>
         <p>Разброс шага: {(100 * analysis.damageHypothesis.pitchScatterFraction).toFixed(2)}%; ошибка шаблона на сохранных участках: {(100 * analysis.damageHypothesis.templateErrorFraction).toFixed(1)}% его высоты. Это не допуск детали и не вероятность.</p>
         {image && imageSize && <DamagePreview image={image} width={imageSize.width} height={imageSize.height} analysis={analysis} />}
-        <button type="button" className="secondary-button full" onClick={() => { onDraftChange(); setTeeth(String(analysis.damageHypothesis!.toothCount)); setConfirmedTeeth(false); setDamageHypothesisTransferred(true); }}>
+        <button type="button" className="secondary-button full" onClick={() => { onDraftChange(); invalidateSpan(); setTeeth(String(analysis.damageHypothesis!.toothCount)); setConfirmedTeeth(false); setDamageHypothesisTransferred(true); }}>
           Подставить гипотезу {analysis.damageHypothesis.toothCount}
         </button>
         {damageHypothesisTransferred && <p role="status">Гипотеза перенесена. Отдельно подтвердите полное число зубьев, включая сломанные, по детали, чертежу или данным ответного колеса.</p>}
@@ -165,36 +179,44 @@ export function PhotoWizard({ onApply, onManual, onDraftChange, active = true }:
       <p>{analysis.candidateTypes[0]?.evidence || 'По этому снимку нельзя уверенно определить деталь.'}</p>
       <details><summary>Что удалось определить</summary><ul>{[...analysis.warnings, ...(analysis.damageHypothesis?.evidence ?? [])].map((w, i) => <li key={i}>{w}</li>)}</ul><p>Качество сигнала: {Math.round(analysis.confidence * 100)}/100. Это оценка контура, а не вероятность правильной детали.</p></details>
     </div>}
-      <Choice active={active && step === 1} id="photo-type" label="Тип по осмотру детали" value={kind} onChange={v => { onDraftChange(); setKind(v); setDiameter(''); setPitch(''); setDiameterMethod('unknown'); setBeta(''); setBody(''); setStandard(false); setSymmetric(false); setPhotoMeasurement(null); setConfirmedTeeth(false); }} options={{ unknown: 'Пока не знаю', ...Object.fromEntries(inferredKinds.map(key => [key, modelNames[key]])), other: 'Циклоидальный, конус, червяк или другой тип' }} />
+      <Choice active={active && step === 1} id="photo-type" label="Тип по осмотру детали" value={kind} onChange={v => { onDraftChange(); setKind(v); setDiameter(''); setPitch(''); setDiameterMethod('unknown'); setBeta(''); setBody(''); setStandard(false); setSymmetric(false); setPhotoMeasurement(null); setConfirmedTeeth(false); setSpanApplication(null); setSpanPending(false); }} options={{ unknown: 'Пока не знаю', ...Object.fromEntries(inferredKinds.map(key => [key, modelNames[key]])), other: 'Циклоидальный, конус, червяк или другой тип' }} />
       {!supported && <div className="expert-note"><p>{kind === 'other' ? 'Для этого типа нужны отдельные исходные параметры. Циклоидальное, коническое колесо и ZA-червяк доступны в ручном режиме.' : 'Осмотрите боковую поверхность: прямые, косые и шевронные зубья могут иметь похожий торцевой контур. У внутреннего колеса зубья направлены к центру кольца.'}</p><button className="inline-link" onClick={onManual}>Перейти к ручному вводу <ArrowRight size={14} /></button></div>}
-      <div className="photo-spaced"><Measure label={rack ? 'Число зубьев участка' : 'Полное число зубьев'} value={teeth} set={v => { onDraftChange(); setTeeth(v); setConfirmedTeeth(false); setDamageHypothesisTransferred(false); }} placeholder="24" /></div>
-      <label className="check-row"><Checkbox checked={confirmedTeeth} onCheckedChange={v => edit(setConfirmedTeeth, v === true)} /><span>Число зубьев проверено по детали, включая повреждённые.</span></label>
+      <div className="photo-spaced"><Measure label={rack ? 'Число зубьев участка' : 'Полное число зубьев'} value={teeth} set={v => { onDraftChange(); invalidateSpan(); setTeeth(v); setConfirmedTeeth(false); setDamageHypothesisTransferred(false); }} placeholder="24" /></div>
+      <label className="check-row"><Checkbox checked={confirmedTeeth} onCheckedChange={v => editProfile(setConfirmedTeeth, v === true)} /><span>Число зубьев проверено по детали, включая повреждённые.</span></label>
       {!typeReady && <p className="field-help">Выберите тип и отдельно подтвердите полное число зубьев. Гипотезы контура для этого недостаточно.</p>}
     </section>
     <section hidden={step !== 2} aria-label="Масштаб и профиль">
       <p className="step-intro">Известный размер задаёт масштаб. Профиль и его углы берём из измерений или документации — по одному контуру их не определить.</p>
-      <Choice active={active && step === 2} id="photo-profile" label="Профиль по чертежу или измерениям" value={profile} onChange={v => edit(setProfile, v)} options={{ unknown: 'Не подтверждён', involute: 'Эвольвентный подтверждён', other: 'Циклоидальный или другой' }} />
+      <Choice active={active && step === 2} id="photo-profile" label="Профиль по чертежу или измерениям" value={profile} onChange={v => editProfile(setProfile, v)} options={{ unknown: 'Не подтверждён', involute: 'Эвольвентный подтверждён', other: 'Циклоидальный или другой' }} />
       {image && imageSize && supported && !rack && <PhotoScale key={`${imageSize.id}-${kind}`} active={active && step === 2} image={image} width={imageSize.width} height={imageSize.height} internal={internal} isApplied={photoMeasurement !== null}
-        onInvalidated={invalidatePhotoMeasurement} onMeasured={measurement => { onDraftChange(); setPhotoMeasurement(measurement); setDiameter(String(measurement.result.diameterMm)); setDiameterMethod('tip_circle'); }} />}
+        onInvalidated={invalidatePhotoMeasurement} onMeasured={measurement => { onDraftChange(); invalidateSpan(); setPhotoMeasurement(measurement); setDiameter(String(measurement.result.diameterMm)); setDiameterMethod('tip_circle'); }} />}
+      <label className="check-row"><Checkbox checked={standard} onCheckedChange={v => editProfile(setStandard, v === true)} /><span>Подтверждены стандартная высота ha* = 1 и отсутствие укорочения или модификации вершин.</span></label>
+      {kind === 'spur' && <SpanMeasurementAssistant key={imageSize?.id ?? 'no-image'} teeth={Number(teeth)} toolTipRadiusCoefficient={.3}
+        facts={{ teeth: typeReady, involute: profile === 'involute', standardTip: standard }}
+        seed={{ ...(diameter !== '' ? { diameter: Number(diameter), diameterMethod: diameterMethod as SpanMeasurementInput['tipDiameterMethod'] } : {}), ...(alpha !== '' ? { pressureAngle: Number(alpha) } : {}) }}
+        application={spanApplication} engaged={spanPath} onDraftChange={() => { onDraftChange(); setSpanApplication(null); setSpanPending(true); }}
+        onApply={application => { onDraftChange(); setSpanApplication(application); setSpanPending(false); }}
+        onCancel={() => { onDraftChange(); setSpanApplication(null); setSpanPending(false); }} />}
+      <div hidden={spanPath}>
       <div className="photo-spaced">{rack ? <Measure label="Торцевой шаг, мм" value={pitch} set={v => edit(setPitch, v)} placeholder="6,28319" /> : <Measure label={internal ? 'Внутренний da, мм' : 'Диаметр вершин, мм'} value={diameter} set={setManualDiameter} placeholder="52" />}</div>
-      {rack ? <p className="field-help">Измерьте расстояние вдоль перемещения рейки через несколько зубьев и разделите на число промежутков.</p> : <Choice active={active && step === 2} id="diameter-method" label="Как определён диаметр вершин?" value={diameterMethod} onChange={v => { onDraftChange(); setDiameterMethod(v); setPhotoMeasurement(null); }} options={{ unknown: 'Метод не подтверждён', tip_circle: 'Диаметр окружности восстановлен', opposed_tips: 'Между противоположными вершинами', uncorrected_caliper_span: 'Просто размер штангенциркулем' }} />}
+      {rack ? <p className="field-help">Измерьте расстояние вдоль перемещения рейки через несколько зубьев и разделите на число промежутков.</p> : <Choice active={active && step === 2 && !spanPath} id="diameter-method" label="Как определён диаметр вершин?" value={diameterMethod} onChange={v => { onDraftChange(); invalidateSpan(); setDiameterMethod(v); setPhotoMeasurement(null); }} options={{ unknown: 'Метод не подтверждён', tip_circle: 'Диаметр окружности восстановлен', opposed_tips: 'Между противоположными вершинами', uncorrected_caliper_span: 'Просто размер штангенциркулем' }} />}
       {!rack && <p className="field-help">{internal ? 'Нужна окружность вершин внутренних зубьев, не наружный размер кольца. ' : ''}При нечётном числе зубьев размер штангенциркулем не равен автоматически диаметру.</p>}
       {helical && <div className="photo-spaced"><Measure label="Угол β на делительной поверхности, °" value={beta} set={v => edit(setBeta, v)} placeholder="Например, −20" /><p className="field-help">Знак задаёт направление. Угол по фотографии без коррекции перспективы не подходит.</p></div>}
-      <div className="input-grid photo-inputs"><Measure label={helical ? 'Угол αₙ, °' : 'Угол α, °'} value={alpha} set={v => edit(setAlpha, v)} placeholder="Неизвестен" /><Measure label="Смещение xₙ" value={shift} set={v => edit(setShift, v)} placeholder="Неизвестно" /></div>
+      <div className="input-grid photo-inputs"><Measure label={helical ? 'Угол αₙ, °' : 'Угол α, °'} value={alpha} set={v => editProfile(setAlpha, v)} placeholder="Неизвестен" /><Measure label="Смещение xₙ" value={shift} set={v => editProfile(setShift, v)} placeholder="Неизвестно" /></div>
       <p className="field-help">Введите подтверждённые значения. 20° и нулевое смещение не принимаются автоматически.</p>
-      <label className="check-row"><Checkbox checked={standard} onCheckedChange={v => edit(setStandard, v === true)} /><span>Подтверждены стандартная высота ha* = 1 и отсутствие укорочения или модификации вершин.</span></label>
+      </div>
       {kind === 'herringbone' && <label className="check-row"><Checkbox checked={symmetric} onCheckedChange={v => edit(setSymmetric, v === true)} /><span>Половины шеврона равны, центральная канавка отсутствует.</span></label>}
       <Choice active={active && step === 2} id="measurement-source" label="Источник подтверждённых данных" value={source} onChange={v => edit(setSource, v as MeasurementSource)} options={{ user_confirmation: 'Проверены мной по детали / данным', measurement: 'Результаты измерений', drawing: 'Чертёж или документация' }} />
-      {result.calculation && <div className="module-result"><span>Расчётный нормальный модуль</span><strong>{result.calculation.normalModuleMm.toLocaleString('ru-RU', { maximumFractionDigits: 5 })} мм</strong><code>{result.calculation.formula}</code><p>Из подтверждённых размеров. Без округления до стандартного ряда.</p></div>}
-      {result.issues.map(issue => <p className="inline-error" key={issue.code}>{issue.message}</p>)}
-      {result.missingQuestions.length > 0 && <details className="expert-more"><summary>Что ещё уточнить ({result.missingQuestions.length})</summary>{result.missingQuestions.map(q => <div key={q.id}><strong>{q.label}</strong><p>{q.reason}</p></div>)}</details>}
-      {!scaleReady && <p className="field-help">Неизвестный угол или профиль лучше уточнить по чертежу, данным ответной детали или измерениям. Помощник не подставляет их за вас.</p>}
+      {calculatedModule !== undefined && <div className="module-result"><span>Расчётный нормальный модуль</span><strong>{calculatedModule.toLocaleString('ru-RU', { maximumFractionDigits: 6 })} мм</strong><code>{spanPath ? 'm = [W(k+1) − Wk] / (π cos α)' : result.calculation?.formula}</code><p>{spanPath ? 'Из явно применённого решения по общей нормали. Смещение и утонение сохранены вместе с измерениями.' : 'Из подтверждённых размеров. Без округления до стандартного ряда.'}</p></div>}
+      {!spanPath && result.issues.map(issue => <p className="inline-error" key={issue.code}>{issue.message}</p>)}
+      {!spanPath && result.missingQuestions.length > 0 && <details className="expert-more"><summary>Что ещё уточнить ({result.missingQuestions.length})</summary>{result.missingQuestions.map(q => <div key={q.id}><strong>{q.label}</strong><p>{q.reason}</p></div>)}</details>}
+      {!scaleReady && <p className="field-help">{spanPath ? 'Рассчитайте и явно примените результат общей нормали или вернитесь в помощнике к прямому вводу. До этого перейти к построению нельзя.' : 'Неизвестный угол или профиль лучше уточнить по чертежу, данным ответной детали или измерениям. Помощник не подставляет их за вас.'}</p>}
     </section>
     <section hidden={step !== 3} aria-label="Размеры тела и резюме">
       <p className="step-intro">Осталось измерить тело детали. После построения вы сможете повернуть модель и проверить размеры.</p>
-      <dl className="photo-summary"><div><dt>Тип</dt><dd>{supported ? modelNames[kind as InferredGearKind] : 'Не подтверждён'}</dd></div><div><dt>Число зубьев</dt><dd>{teeth || '—'}</dd></div><div><dt>Модуль</dt><dd>{result.calculation ? `${result.calculation.normalModuleMm.toLocaleString('ru-RU', { maximumFractionDigits: 5 })} мм` : '—'}</dd></div></dl>
+      <dl className="photo-summary"><div><dt>Тип</dt><dd>{supported ? modelNames[kind as InferredGearKind] : 'Не подтверждён'}</dd></div><div><dt>Число зубьев</dt><dd>{teeth || '—'}</dd></div><div><dt>Модуль</dt><dd>{calculatedModule !== undefined ? `${calculatedModule.toLocaleString('ru-RU', { maximumFractionDigits: 6 })} мм` : '—'}</dd></div></dl>
       <div className="input-grid photo-spaced"><Measure label="Ширина, мм" value={width} set={v => edit(setWidth, v)} placeholder="Измерьте" /><Measure label={rack ? 'Основание, мм' : internal ? 'Обод, мм' : 'Отверстие, мм'} value={body} set={v => edit(setBody, v)} placeholder={rack || internal ? 'Измерьте' : '0 — сплошное'} /></div>
-      <p className="field-help">Размеры тела обязательны. Галтель, посадки и утонение зуба по фото не восстановлены: в модели утонение 0; у наружного колеса радиус вершины инструмента 0,3mₙ. Их можно изменить вручную.</p>
+      <p className="field-help">Размеры тела обязательны. {spanPath ? `Утонение из принятого решения по общей нормали: ${spanApplication?.candidate.parameters.backlash.toLocaleString('ru-RU', { maximumFractionDigits: 6 })} мм.` : 'Утонение зуба по фото не восстановлено: в модели принято 0.'} Галтель и посадки по фото не восстановлены; у наружного колеса принят радиус вершины инструмента 0,3mₙ. Его можно изменить вручную.</p>
       {kind === 'internal' && <InternalCutterFields params={internalCutter} onChange={(key, value) => { onDraftChange(); setError(''); setInternalCutter(old => ({ ...old, [key]: value })); }} />}
       {kind === 'internal-helical' && <p className="field-help">Внутреннее косозубое строится без производящей переходной поверхности. Плоский долбяк к этому режиму не применяется.</p>}
       {!ready && <p className="field-help">Укажите оба размера. Для сплошной детали отверстие равно 0.</p>}
