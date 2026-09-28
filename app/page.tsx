@@ -1,5 +1,5 @@
 "use client";
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Camera, Cog, ArrowRight, ArrowLeft, BookOpen, Check, Pencil, Info, FileJson, Grid2X2, ScanLine, SlidersHorizontal, Box, Download } from 'lucide-react';
 import { Toaster } from 'sonner';
 import { GearViewer } from '@/components/gear/GearViewer';
@@ -13,8 +13,8 @@ import { ModelChips, ModelSummary, ModelInspection } from '@/components/gear/Mod
 import { CheckoutActions } from '@/components/gear/CheckoutActions';
 import { useGearTool } from '@/components/gear/useGearTool';
 import { useJourney } from '@/components/gear/useJourney';
-import { validateMesh } from '@/lib/gearMath';
-import { buildModelMesh, defaultModel, type ModelParams, type ModelKind } from '@/lib/model';
+import { useModelCheck } from '@/components/gear/useModelCheck';
+import { defaultModel, type ModelParams, type ModelKind } from '@/lib/model';
 import { canVisit, checkoutSnapshot, hasCurrentModel, type JourneyStage, type InputMode } from '@/lib/journey';
 import { APP_VERSION } from '@/lib/appVersion';
 import { ProjectWorkspace, type ProjectSession } from '@/components/gear/ProjectWorkspace';
@@ -36,14 +36,7 @@ function Studio({ project }: { project: ProjectSession }) {
   const { state, send } = useJourney(project.initial, project.onJourney), heading = useRef<HTMLHeadingElement>(null);
   const referencePhotos = useReferencePhotos(() => send({ type: 'edit-reference-photos' }));
   const [reference, setReference] = useState(false);
-  const deferred = useDeferredValue(state.manualDraft), updating = deferred !== state.manualDraft;
-  const manualCheck = useMemo(() => {
-    if (state.mode !== 'manual' || state.stage !== 'input') return { error: null };
-    try {
-      const mesh = buildModelMesh(deferred);
-      return { error: validateMesh(mesh).valid ? null : 'Сетка не прошла проверку. Измените параметры.' };
-    } catch (e) { return { error: e instanceof Error ? e.message : 'Не удалось построить профиль.' }; }
-  }, [deferred, state.mode, state.stage]);
+  const manualCheck = useModelCheck(state.manualDraft, state.mode === 'manual' && state.stage === 'input'), updating = manualCheck.pending;
   useEffect(() => {
     const frame = requestAnimationFrame(() => { heading.current?.focus({ preventScroll: true }); window.scrollTo({ top: 0, behavior: 'instant' }); });
     return () => cancelAnimationFrame(frame);

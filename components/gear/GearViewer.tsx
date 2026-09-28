@@ -9,11 +9,16 @@ import { isRackKind, type ModelMesh } from '@/lib/model';
 
 type View = '3d' | '2d' | 'top' | 'side';
 export function GearViewer({ mesh, error }: { mesh: ModelMesh | null; error: string | null }) {
-  const host = useRef<HTMLDivElement>(null), sceneRef = useRef<{ reset: () => void; zoom: (n: number) => void } | null>(null);
+  const host = useRef<HTMLDivElement>(null), sceneRef = useRef<{ reset: () => void; zoom: (n: number) => void; setView: (v: View) => void; setWireframe: (on: boolean) => void } | null>(null);
   const [view, setView] = useState<View>('3d'), [webglError, setWebglError] = useState(false);
   const [showDimensions, setShowDimensions] = useState(false), [wireframe, setWireframe] = useState(false);
+  // Settings live in refs so orientation and wireframe changes reuse the renderer, environment and geometry.
+  const viewRef = useRef(view), wireframeRef = useRef(wireframe), flat = view === '2d';
+  useEffect(() => { viewRef.current = view; if (view !== '2d') sceneRef.current?.setView(view); }, [view]);
+  useEffect(() => { wireframeRef.current = wireframe; sceneRef.current?.setWireframe(wireframe); }, [wireframe]);
   useEffect(() => {
-    if (!host.current || !mesh || view === '2d' || webglError) return;
+    if (!host.current || !mesh || flat || webglError) return;
+    let view = viewRef.current;
     let renderer: THREE.WebGLRenderer;
     try { renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true }); }
     catch { const fallback = requestAnimationFrame(() => setWebglError(true)); return () => cancelAnimationFrame(fallback); }
@@ -30,7 +35,7 @@ export function GearViewer({ mesh, error }: { mesh: ModelMesh | null; error: str
     scene.environment = env.texture;
     const raw = new THREE.BufferGeometry(); raw.setAttribute('position', new THREE.BufferAttribute(mesh.positions, 3)); raw.setIndex(new THREE.BufferAttribute(mesh.indices, 1));
     const geometry = toCreasedNormals(raw, Math.PI / 5); raw.dispose(); geometry.computeBoundingSphere(); geometry.computeBoundingBox();
-    const material = new THREE.MeshStandardMaterial({ color: 0xb9965c, metalness: .72, roughness: .36, wireframe });
+    const material = new THREE.MeshStandardMaterial({ color: 0xb9965c, metalness: .72, roughness: .36, wireframe: wireframeRef.current });
     const model = new THREE.Mesh(geometry, material); model.castShadow = true; model.receiveShadow = true; scene.add(model);
     const r = geometry.boundingSphere?.radius || 30, centre = geometry.boundingSphere?.center ?? new THREE.Vector3();
     camera.near = Math.max(r / 1000, 1e-5); camera.far = r * 16; camera.updateProjectionMatrix();
@@ -46,8 +51,9 @@ export function GearViewer({ mesh, error }: { mesh: ModelMesh | null; error: str
     const floorDepthMaterial = new THREE.MeshDepthMaterial({ colorWrite: false, depthWrite: false });
     const floor = new THREE.Mesh(floorGeometry, floorMaterial); floor.customDepthMaterial = floorDepthMaterial;
     floor.position.set(centre.x, centre.y, (geometry.boundingBox?.min.z ?? 0) - r * .005); floor.receiveShadow = true; scene.add(floor);
-    const controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = true; controls.dampingFactor = .075;
-    controls.minDistance = r * 1.3; controls.maxDistance = r * 12; controls.target.copy(centre);
+    const makeControls = () => { const c = new OrbitControls(camera, renderer.domElement); c.enableDamping = true; c.dampingFactor = .075;
+      c.minDistance = r * 1.3; c.maxDistance = r * 12; c.target.copy(centre); return c; };
+    let controls = makeControls();
     const reset = () => {
       controls.target.copy(centre);
       const halfAngle = Math.min(THREE.MathUtils.degToRad(camera.fov / 2), Math.atan(Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect));
@@ -56,7 +62,10 @@ export function GearViewer({ mesh, error }: { mesh: ModelMesh | null; error: str
       camera.up.set(0, view === 'top' ? 1 : 0, view === 'top' ? 0 : 1);
       camera.position.copy(centre).addScaledVector(direction, distance); controls.update();
     };
-    sceneRef.current = { reset, zoom: factor => { camera.position.sub(controls.target).multiplyScalar(factor).add(controls.target); controls.update(); } };
+    sceneRef.current = { reset, zoom: factor => { camera.position.sub(controls.target).multiplyScalar(factor).add(controls.target); controls.update(); },
+      // OrbitControls caches the up-axis, so a new orientation gets fresh controls on the same renderer.
+      setView: next => { view = next; controls.dispose(); camera.up.set(0, next === 'top' ? 1 : 0, next === 'top' ? 0 : 1); controls = makeControls(); reset(); },
+      setWireframe: on => { material.wireframe = on; } };
     let previousAspect = 0;
     const size = () => {
       if (!mount.clientWidth || !mount.clientHeight) return;
@@ -70,7 +79,7 @@ export function GearViewer({ mesh, error }: { mesh: ModelMesh | null; error: str
       cancelAnimationFrame(frame); observer.disconnect(); controls.dispose(); geometry.dispose(); material.dispose();
       floorGeometry.dispose(); floorMaterial.dispose(); floorDepthMaterial.dispose(); light.shadow.map?.dispose(); light.shadow.mapPass?.dispose(); environmentScene.dispose(); env.dispose(); pmrem.dispose(); renderer.dispose(); renderer.domElement.remove(); sceneRef.current = null;
     };
-  }, [mesh, view, wireframe, webglError]);
+  }, [mesh, flat, webglError]);
   const d = mesh?.dimensions, bevel = mesh && 'bevelDimensions' in mesh ? mesh.bevelDimensions : null;
   const bound = mesh ? mesh.profile.outer.reduce((r, p) => Math.max(r, Math.abs(p.x), Math.abs(p.y)), 0) * 1.24 : 40;
   const path = mesh ? [mesh.profile.outer, ...(mesh.profile.hole ? [mesh.profile.hole] : [])].map(loop => 'M' + loop.map(p => `${p.x},${-p.y}`).join('L') + 'Z').join(' ') : '';
