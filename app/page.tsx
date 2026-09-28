@@ -73,6 +73,7 @@ function Studio({ project }: { project: ProjectSession }) {
   const modelVisible = model && ['review', 'delivery', 'checkout'].includes(state.stage);
   const inputActive = state.stage === 'input', photoActive = inputActive && state.mode === 'photo';
   useGearTool(state.built?.params ?? state.manualDraft, params => {
+    if (project.archived) throw new Error('Верните проект из архива в работу перед изменением параметров.');
     if (project.busy) throw new Error('Дождитесь завершения обработки фото.');
     send({ type: 'choose-input', mode: 'manual' }); send({ type: 'clear-manual-span' }); send({ type: 'edit-manual', params }); send({ type: 'clear-manual-family', method: 'webmcp' });
     send({ type: 'build', params, origin: 'Параметры заданы через инструмент конструктора', evidence: null, referencePhotos: referencePhotoManifest(referencePhotos.photos) });
