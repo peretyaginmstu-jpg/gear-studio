@@ -4,6 +4,7 @@ import { Check, AlertTriangle, ChevronDown, Link2 } from 'lucide-react';
 import { isRackKind, isInternalKind, isHelicalKind, modelNames, type ModelParams } from '@/lib/model';
 import type { BuiltModel } from '@/lib/journey';
 import { PairDialog } from './PairDialog';
+import { PinMeasurementTool } from './PinMeasurementTool';
 export const formatModelNumber = (n: number, digits = 2) => Number.isFinite(n) ? n.toLocaleString('ru-RU', { maximumFractionDigits: digits }) : '—';
 const fmt = formatModelNumber;
 export function ModelChips({ params }: { params: ModelParams }) {
@@ -53,6 +54,7 @@ export function ModelInspection({ model, onReference }: { model: BuiltModel; onR
             {bevel && <><div><dt>Делительный конус δ₁</dt><dd>{fmt(bevel.pitchConeAngleDeg)}°</dd></div><div><dt>Основной конус δᵦ</dt><dd>{fmt(bevel.baseConeAngleDeg)}°</dd></div><Dimension label="Конусное расстояние Rₑ" value={bevel.outerConeDistance} /><Dimension label="Малый модуль mᵢ" value={bevel.innerModule} digits={3} /><Dimension label="Высота по оси H" value={bevel.axialExtent} /></>}
             {['helical', 'herringbone', 'internal-helical', 'helical-rack'].includes(params.kind) && <Dimension label="Торцевой модуль" value={d.transverseModule} digits={3} />}
           </dl> : <p className="inline-error">{error}</p>}
+          <PinMeasurementTool params={params} />
           <div className="engineering-actions">
             <button className="secondary-button pair-button" onClick={() => setPairOpen(true)}><Link2 size={18} /> Проверить пару</button>
           </div>

@@ -1,5 +1,5 @@
 "use client";
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { RotateCcw, SlidersHorizontal, ArrowUpRight } from 'lucide-react';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { isHelicalKind, isInternalKind, isRackKind, modelNames, type ModelKind, type ModelParams } from '@/lib/model';
@@ -19,6 +19,7 @@ export function ParameterEditor({ active = true, params, onChange, onPatch, onKi
   const helical = isHelicalKind(params.kind), rack = isRackKind(params.kind), internal = isInternalKind(params.kind);
   const worm = params.kind === 'worm', cycloidal = params.kind === 'cycloidal', bevel = params.kind === 'bevel';
   const bodyFeatures = ['spur', 'helical', 'herringbone'].includes(params.kind), cylindrical = !worm && !cycloidal && !bevel;
+  const [pitchUnit, setPitchUnit] = useState<'module' | 'dp'>(() => Number.isFinite(params.module) && isWholeDp(params.module) && !isMetricModule(params.module) ? 'dp' : 'module');
   const familyPopup = useActivePopup(active), handPopup = useActivePopup(active && worm);
   return <div className="parameter-editor">
     <div className="editor-family"><label className="field-label" htmlFor="gear-kind">Тип зацепления</label>
@@ -31,7 +32,8 @@ export function ParameterEditor({ active = true, params, onChange, onPatch, onKi
     <div className="input-grid editor-fields">
       {worm ? <NumberField label="Число заходов" symbol="z₁" value={params.wormStarts ?? 1} min={1} max={8} onChange={v => onChange('wormStarts', v)} />
         : <NumberField label="Число зубьев" symbol="z" value={params.teeth} min={rack ? 1 : 6} max={250} onChange={v => onChange('teeth', v)} />}
-      <NumberField label={worm ? 'Осевой модуль' : bevel ? 'Внешний модуль' : cycloidal ? 'Делительный модуль' : helical ? 'Нормальный модуль' : 'Модуль'} symbol={worm ? 'mₓ, мм' : bevel ? 'mₑ, мм' : helical ? 'mₙ, мм' : 'm, мм'} value={params.module} min={.1} max={30} step={.1} onChange={v => onChange('module', v)} />
+      {pitchUnit === 'dp' ? <NumberField label={helical ? 'Нормальный diametral pitch' : 'Diametral pitch'} symbol={helical ? 'Pₙ, 1/дюйм' : 'P, 1/дюйм'} value={Math.round(25.4 / params.module * 1e6) / 1e6} min={.85} max={254} step={1} onChange={v => onChange('module', Number.isFinite(v) && v > 0 ? 25.4 / v : NaN)} />
+        : <NumberField label={worm ? 'Осевой модуль' : bevel ? 'Внешний модуль' : cycloidal ? 'Делительный модуль' : helical ? 'Нормальный модуль' : 'Модуль'} symbol={worm ? 'mₓ, мм' : bevel ? 'mₑ, мм' : helical ? 'mₙ, мм' : 'm, мм'} value={params.module} min={.1} max={30} step={.1} onChange={v => onChange('module', v)} />}
       <NumberField label={worm ? 'Длина нарезки' : bevel ? 'По образующей' : 'Ширина'} symbol={worm ? 'L, мм' : 'b, мм'} value={params.width} min={.1} max={500} step={.5} onChange={v => onChange('width', v)} />
       {!rack && !internal ? <NumberField label="Отверстие" symbol="⌀, мм" value={params.bore} min={0} step={.1} onChange={v => onChange('bore', v)} />
         : internal ? <NumberField label="Обод" symbol="мм" value={params.rimThickness ?? 3 * params.module} min={.1} step={.5} onChange={v => onChange('rimThickness', v)} />
@@ -44,6 +46,12 @@ export function ParameterEditor({ active = true, params, onChange, onPatch, onKi
       {cycloidal && <NumberField label="Производящий радиус" symbol="r, мм" value={params.cycloidRollingRadius ?? Math.min(2 * params.module, params.module * params.teeth / 4)} min={.001} max={params.module * params.teeth / 4} step={.1} onChange={v => onChange('cycloidRollingRadius', v)} />}
       {bevel && <><NumberField label="Зубьев партнёра" symbol="z₂" value={params.bevelMateTeeth ?? params.teeth} min={6} max={250} onChange={v => onChange('bevelMateTeeth', v)} />
         <NumberField label="Угол осей" symbol="Σ, °" value={params.bevelShaftAngleDeg ?? 90} min={1} max={179} onChange={v => onChange('bevelShaftAngleDeg', v)} /></>}
+    </div>
+    <div className="pitch-unit" role="group" aria-label="Система шага">
+      <button type="button" aria-pressed={pitchUnit === 'module'} onClick={() => setPitchUnit('module')}>Модуль, мм</button>
+      <button type="button" aria-pressed={pitchUnit === 'dp'} onClick={() => setPitchUnit('dp')}>Дюймовый DP</button>
+      {pitchUnit === 'dp' ? <span className="field-help">m = 25,4 / P = {Number.isFinite(params.module) ? params.module.toLocaleString('ru-RU', { maximumFractionDigits: 5 }) : '—'} мм. У старых дюймовых колёс часто α = 14,5°.</span>
+        : Number.isFinite(params.module) && isWholeDp(params.module) && <span className="field-help">Это дюймовый шаг DP {Math.round(25.4 / params.module)}.</span>}
     </div>
     {helical && <p className="field-help">Знак β меняет направление винтовой линии.</p>}
     {bodyFeatures && <BodyFeatures params={params} onChange={onChange} onPatch={onPatch} />}
@@ -62,6 +70,11 @@ export function ParameterEditor({ active = true, params, onChange, onPatch, onKi
     <button className="text-button reset-params" onClick={onReset}><RotateCcw size={15} /> Сбросить параметры</button>
   </div>;
 }
+
+const metricModules = [.1, .12, .15, .2, .25, .3, .4, .5, .6, .7, .8, .9, 1, 1.125, 1.25, 1.375, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3, 3.5, 4, 4.5, 5, 5.5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 18, 20, 22, 25, 28];
+const isMetricModule = (m: number) => metricModules.some(v => Math.abs(v - m) < 1e-9);
+/** Integer diametral pitch within display precision, e.g. 25.4/24 = 1.058333 mm. */
+const isWholeDp = (m: number) => { const P = 25.4 / m; return P >= 1 && Math.abs(P - Math.round(P)) < 1e-5 && !isMetricModule(m); };
 
 function BodyFeatures({ params, onChange, onPatch }: { params: ModelParams; onChange: (key: keyof ModelParams, value: number) => void; onPatch: (patch: Partial<ModelParams>) => void }) {
   const optional = (key: keyof ModelParams) => (v: number) => onChange(key, Number.isFinite(v) ? v : 0);

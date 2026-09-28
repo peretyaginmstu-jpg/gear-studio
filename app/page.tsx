@@ -7,6 +7,7 @@ import { PhotoWizard } from '@/components/gear/PhotoWizard';
 import { ReferenceDialog } from '@/components/gear/ReferenceDialog';
 import { ParameterEditor } from '@/components/gear/ParameterEditor';
 import { SpanMeasurementAssistant } from '@/components/gear/SpanMeasurementAssistant';
+import { PinMeasurementTool } from '@/components/gear/PinMeasurementTool';
 import { FamilyAssistant } from '@/components/gear/FamilyAssistant';
 import { ModelChips, ModelSummary, ModelInspection } from '@/components/gear/ModelSummary';
 import { CheckoutActions } from '@/components/gear/CheckoutActions';
@@ -125,6 +126,7 @@ function Studio({ project }: { project: ProjectSession }) {
               {state.manualDraft.kind === 'spur' && <SpanMeasurementAssistant teeth={state.manualDraft.teeth} toolTipRadiusCoefficient={state.manualDraft.toolTipRadiusCoefficient ?? .3}
                 application={state.manualSpan} engaged={state.manualSpanPending || state.manualSpan !== null}
                 onDraftChange={() => send({ type: 'edit-manual-span' })} onApply={application => send({ type: 'apply-manual-span', application })} onCancel={() => send({ type: 'clear-manual-span' })} />}
+              <PinMeasurementTool params={state.manualDraft} onApplyShift={x => edit({ ...state.manualDraft, profileShift: x, backlash: 0 })} />
               <div className="manual-build-status" aria-live="polite">{state.manualFamilyPending ? <p>Ответы о типе ещё не применены. Завершите помощник или вернитесь в нём к прямому выбору типа.</p> : state.manualSpanPending ? <p>Измерения ещё не применены. Завершите помощник или выберите в нём прямой ввод параметров.</p> : updating ? <p>Проверяем параметры…</p> : manualCheck.error ? <p className="inline-error" role="alert">{manualCheck.error}</p> : <p><Check size={17} /> Параметры можно использовать для построения.</p>}</div>
               <button className="primary-button full build-model-button" disabled={state.manualFamilyPending || state.manualSpanPending || updating || !!manualCheck.error} onClick={buildManual}>Построить модель <ArrowRight size={20} /></button>
             </div>
