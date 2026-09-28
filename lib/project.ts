@@ -8,9 +8,11 @@ import { analyzeSpanMeasurement, selectSpanApplication } from './spanMeasurement
 import { estimatePhotoCircle, photoScaleSources } from './photo-scale.ts';
 import { cycloidalPhotoInferenceMatches, type CycloidalPhotoModuleInference } from './cycloidalPhotoInference.ts';
 import { assertPngDimensions, MAX_REFERENCE_PHOTOS, referencePhotosSchema } from './referencePhotos.ts';
+import { manufacturingDraftSchema } from './manufacturing.ts';
 
-export const PROJECT_SCHEMA = 'zatseplenie.project.v3';
-export const PREVIOUS_PROJECT_SCHEMA = 'zatseplenie.project.v2';
+export const PROJECT_SCHEMA = 'zatseplenie.project.v4';
+export const PREVIOUS_PROJECT_SCHEMA = 'zatseplenie.project.v3';
+export const HISTORY_PROJECT_SCHEMA = 'zatseplenie.project.v2';
 export const LEGACY_PROJECT_SCHEMA = 'zatseplenie.project.v1';
 export const MAX_PROJECT_BYTES = 32 * 1024 * 1024;
 export const MAX_PROJECT_VERSIONS = 100;
@@ -109,6 +111,7 @@ const printForm = z.object({ settings: z.object({ bedX: draftNumber, bedY: draft
 const formSchemas: Record<string, z.ZodTypeAny> = { photo: photoForm, photoFamily: familyForm, manualFamily: familyForm,
   photoSpan: spanForm, manualSpan: spanForm, photoScale: scaleForm, print: printForm,
   photoReferences: z.object({ photos: referencePhotosSchema }).partial().strict(),
+  manufacturing: z.object({ draft: manufacturingDraftSchema }).partial().strict(),
   pair: z.object({ second: modelSchema, center: text }).partial().strict() };
 
 const handoff = z.object({ method: z.literal('confirmed-photo-cycloidal-handoff-v1'), selectedPhotoKind: z.literal('spur'), selectedProfile: z.literal('cycloidal'),
@@ -169,9 +172,15 @@ export function parseProject(contents: string): ProjectDocument {
   let raw: unknown;
   try { raw = JSON.parse(contents); } catch { throw new Error('Файл не является JSON-проектом «Зацепления».'); }
   inspectJson(raw);
-  if (!raw || typeof raw !== 'object' || ![PROJECT_SCHEMA, PREVIOUS_PROJECT_SCHEMA, LEGACY_PROJECT_SCHEMA].includes((raw as { schema: string }).schema))
+  if (!raw || typeof raw !== 'object' || ![PROJECT_SCHEMA, PREVIOUS_PROJECT_SCHEMA, HISTORY_PROJECT_SCHEMA, LEGACY_PROJECT_SCHEMA].includes((raw as { schema: string }).schema))
     throw new Error('Неизвестный формат проекта. Нужен файл .gear.json; STL и паспорт не являются файлом проекта.');
   if ((raw as { schema: string }).schema !== PROJECT_SCHEMA) {
+    const legacy = raw as { forms?: unknown; versions?: { forms?: unknown }[] };
+    const requirements = (forms: unknown) => !!forms && typeof forms === 'object' && Object.hasOwn(forms, 'manufacturing');
+    if (requirements(legacy.forms) || Array.isArray(legacy.versions) && legacy.versions.some(version => requirements(version?.forms)))
+      throw new Error('Несогласованная версия формата: требования к изготовлению требуют v4.');
+  }
+  if ([HISTORY_PROJECT_SCHEMA, LEGACY_PROJECT_SCHEMA].includes((raw as { schema: string }).schema)) {
     const legacy = raw as { forms?: unknown; versions?: { forms?: unknown }[] };
     const references = (forms: unknown) => !!forms && typeof forms === 'object' && (Object.hasOwn(forms, 'photoReferences')
       || !!(forms as ProjectForms).photo?.values?.imageReference);
@@ -183,7 +192,7 @@ export function parseProject(contents: string): ProjectDocument {
     if ('versions' in raw || 'assets' in raw) throw new Error('Несогласованная версия формата проекта.');
     raw = { ...raw, schema: PROJECT_SCHEMA, versions: [], assets: {} };
   }
-  if ((raw as { schema: string }).schema === PREVIOUS_PROJECT_SCHEMA) raw = { ...(raw as Record<string, unknown>), schema: PROJECT_SCHEMA };
+  if ([PREVIOUS_PROJECT_SCHEMA, HISTORY_PROJECT_SCHEMA].includes((raw as { schema: string }).schema)) raw = { ...(raw as Record<string, unknown>), schema: PROJECT_SCHEMA };
   const parsed = documentSchema.safeParse(raw);
   if (!parsed.success) throw new Error(`Не удалось прочитать проект: проверьте поле ${parsed.error.issues[0]?.path.join('.') || 'данных'}.`);
   const { assets, ...doc } = parsed.data;

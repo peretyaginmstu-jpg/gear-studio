@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { appendReferencePhotos, swapReferencePhoto, referencePhotoManifest, referencePhotosSchema, MAX_REFERENCE_IMAGE_CHARS, type ReferencePhoto } from '../lib/referencePhotos.ts';
-import { newProject, parseProject, serializeProject, snapshotJourney, PROJECT_SCHEMA, PREVIOUS_PROJECT_SCHEMA } from '../lib/project.ts';
+import { newProject, parseProject, serializeProject, snapshotJourney, PROJECT_SCHEMA, HISTORY_PROJECT_SCHEMA } from '../lib/project.ts';
 import { addProjectVersion, restoreProjectVersion, compareProjectSnapshots } from '../lib/projectVersions.ts';
 import { initialJourney, transitionJourney, canVisit } from '../lib/journey.ts';
 import { defaultModel } from '../lib/model.ts';
@@ -53,7 +53,7 @@ test('import normalization does not invent photo or input changes from object pr
 test('v2 projects and image histories migrate; v2 cannot disguise the new multi-view format', () => {
   const doc = withPhotos(); delete doc.forms.photoReferences;
   const wire = JSON.parse(serializeProject(addProjectVersion(doc, 'Старая версия')));
-  wire.schema = PREVIOUS_PROJECT_SCHEMA; wire.appVersion = '0.21.0';
+  wire.schema = HISTORY_PROJECT_SCHEMA; wire.appVersion = '0.21.0';
   const restored = parseProject(JSON.stringify(wire));
   assert.equal(restored.schema, PROJECT_SCHEMA); assert.equal(restored.versions.length, 1); assert.equal(restored.forms.photo.values.image, png);
   wire.versions[0].forms.photoReferences = { identity: 'default', values: { photos: [] } };

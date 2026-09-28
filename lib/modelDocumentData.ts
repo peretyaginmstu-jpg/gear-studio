@@ -1,5 +1,6 @@
 import { isHelicalKind, isInternalKind, isRackKind, modelNames, type ModelMesh } from './model.ts';
 import type { prepareModelExport, ExportPreset } from './modelExport.ts';
+import type { ManufacturingReport } from './manufacturing.ts';
 
 export type Axis = 'X' | 'Y' | 'Z';
 export type Projection = 'XY' | 'XZ' | 'YZ';
@@ -8,6 +9,7 @@ export type DimensionRow = { label: string; value: number | string; unit: string
 export interface ModelDocumentInput {
   stl: ArrayBuffer; filename: string; projectName: string; preset: ExportPreset; appVersion: string;
   passport: string; origin: string; warnings: string[]; notVerified: string[]; nominalRows: DimensionRow[]; volume: number;
+  manufacturing: ManufacturingReport | null;
 }
 export function modelDocumentInput(prepared: ReturnType<typeof prepareModelExport>, filename: string, projectName: string): ModelDocumentInput {
   if (!prepared.validation.valid || prepared.passport.artifact.purpose !== 'STL-export' || !prepared.passport.artifact.preset)
@@ -15,7 +17,7 @@ export function modelDocumentInput(prepared: ReturnType<typeof prepareModelExpor
   return { stl: prepared.stl, filename, projectName, preset: prepared.passport.artifact.preset, appVersion: prepared.passport.appVersion,
     passport: JSON.stringify(prepared.passport, null, 2), origin: prepared.passport.origin,
     warnings: prepared.passport.warnings.map(w => w.message), notVerified: [...prepared.passport.notVerified],
-    nominalRows: modelNominalRows(prepared.mesh), volume: prepared.validation.signedVolume };
+    nominalRows: modelNominalRows(prepared.mesh), volume: prepared.validation.signedVolume, manufacturing: prepared.passport.manufacturing };
 }
 export const dimensionText = (value: number) => value.toLocaleString('ru-RU', { maximumFractionDigits: 6, useGrouping: false });
 

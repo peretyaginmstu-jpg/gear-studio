@@ -2,6 +2,7 @@ import { PDFDocument, rgb, degrees, pushGraphicsState, popGraphicsState, transla
 import fontkit from '@pdf-lib/fontkit';
 import { zipSync, strToU8 } from 'fflate';
 import { dimensionText, inspectDocumentSTL, projectSTLSilhouette, type ModelDocumentInput, type Projection } from './modelDocumentData.ts';
+import { manufacturingStatus, manufacturingPurposes, manufacturingProcesses, signedDeviation } from './manufacturing.ts';
 
 export interface DocumentFonts { regular: Uint8Array; bold: Uint8Array }
 export const documentNotes = [
@@ -36,6 +37,8 @@ export async function createModelDocuments(input: ModelDocumentInput, fonts: Doc
   const stl = inspectDocumentSTL(input.stl), passport = JSON.parse(input.passport);
   if (passport.artifact?.triangles !== stl.triangles || passport.artifact?.preset !== input.preset || passport.artifact?.purpose !== 'STL-export')
     throw new Error('Паспорт не соответствует подготовленному STL.');
+  if (JSON.stringify(passport.manufacturing ?? null) !== JSON.stringify(input.manufacturing ?? null))
+    throw new Error('Требования в документах не соответствуют паспорту STL.');
   const hash = await sha256(input.stl), stem = input.filename.slice(0, -4);
   const pdfName = `${stem}-dimensions.pdf`, passportName = `${stem}-passport.json`;
   const pdfDoc = await PDFDocument.create(); pdfDoc.registerFontkit(fontkit);
@@ -124,16 +127,41 @@ export async function createModelDocuments(input: ModelDocumentInput, fonts: Doc
     y -= rowHeight + 3;
   }
 
-  let notePage = newPage('Происхождение и условия'); y = 499;
+  let sectionTitle = input.manufacturing ? 'Требования к изготовлению' : 'Происхождение и условия';
+  let notePage = newPage(sectionTitle); y = 499;
   const paragraph = (value: string, strong = false) => {
     const lines = wrap(value, strong ? 11 : 10, usable, strong ? bold : regular);
-    if (strong && y - lines.length * 15 < 85) { notePage = newPage('Происхождение и условия / продолжение'); y = 499; }
+    if (strong && y - lines.length * 15 < 85) { notePage = newPage(`${sectionTitle} / продолжение`); y = 499; }
+    if (!strong && lines.length <= 4 && y - (lines.length - 1) * 15 < 66) { notePage = newPage(`${sectionTitle} / продолжение`); y = 499; }
     for (const lineText of lines) {
-      if (y < 66) { notePage = newPage('Происхождение и условия / продолжение'); y = 499; }
+      if (y < 66) { notePage = newPage(`${sectionTitle} / продолжение`); y = 499; }
       text(notePage, lineText, margin, y, strong ? 11 : 10, strong); y -= 15;
     }
     y -= strong ? 8 : 6;
   };
+  if (input.manufacturing) {
+    const m = input.manufacturing, r = m.request;
+    const sentence = (value: string) => /[.!?…]$/.test(value.trimEnd()) ? value : `${value}.`;
+    paragraph(manufacturingStatus[m.status], true);
+    if (m.status !== 'reviewed') paragraph('Эта карточка ещё не сверена с текущей моделью. Перед передачей в изготовление откройте требования и устраните замечания.');
+    else paragraph(`Сверено пользователем ${m.review!.reviewedAt.replace('T', ' ').replace(/\.\d+Z$/, ' UTC')}. Это не согласование исполнителя.`);
+    paragraph(`Назначение: ${manufacturingPurposes[r.purpose]}. Количество: ${(r.quantity ?? r.quantityInput) || 'не задано'} шт.`);
+    paragraph(sentence(`Способ: ${manufacturingProcesses[r.process]}. Материал: ${r.material || 'уточнить с исполнителем'}`));
+    paragraph(sentence(`Применение: ${r.application || 'не указано'}`));
+    paragraph(sentence(`Нагрузка и условия: ${r.operatingConditions || 'не указаны'}`));
+    paragraph(sentence(`Ответная деталь и сопряжение: ${r.matingPart || 'не указаны'}`));
+    paragraph('Размеры готовой детали', true);
+    if (!m.dimensions.length) paragraph('Предельные размеры не заданы.');
+    for (const row of m.dimensions) {
+      paragraph(`${row.label}: номинал ${row.nominal === null ? 'не применяется' : `${dimensionText(row.nominal)} мм`}; нижнее отклонение ${row.lowerDeviation === null ? row.lowerInput || 'не задано' : signedDeviation(row.lowerDeviation)}; верхнее отклонение ${row.upperDeviation === null ? row.upperInput || 'не задано' : signedDeviation(row.upperDeviation)} мм.`);
+      paragraph(row.minimum === null || row.maximum === null ? `Требует уточнения: ${row.errors.join(' ')}` : `Предельные размеры: от ${dimensionText(row.minimum)} до ${dimensionText(row.maximum)} мм.`);
+    }
+    if (r.notes) paragraph(`Примечания и контроль: ${r.notes}`);
+    if (m.issues.length) { paragraph('Исправить перед проверкой', true); m.issues.forEach(value => paragraph(value)); }
+    paragraph(`Останется согласовать: ${m.clarifications.join('; ')}.`);
+    paragraph(m.interpretation);
+    sectionTitle = 'Происхождение и условия'; notePage = newPage(sectionTitle); y = 499;
+  }
   paragraph('Исходные данные', true);
   paragraph(`Проект: ${input.projectName || 'Деталь'}.`);
   paragraph(input.origin.length > 2000 ? `${input.origin.slice(0, 2000)}... Полный текст - в JSON-паспорте.` : input.origin);

@@ -118,7 +118,7 @@ test('older database clients fail instead of dropping the archive marker; files 
   await assert.rejects(open(1), error => error instanceof DOMException && error.name === 'VersionError');
   assert.ok((await readProject(p.id)).archivedAt);
   const portable = JSON.parse((await row(p.id)).contents);
-  assert.equal(portable.schema, 'zatseplenie.project.v3'); assert.equal(portable.archivedAt, undefined);
+  assert.equal(portable.schema, 'zatseplenie.project.v4'); assert.equal(portable.archivedAt, undefined);
   assert.match(storageErrorMessage(new ProjectArchivedError()), /отдельной копией/);
 });
 

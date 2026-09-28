@@ -116,6 +116,7 @@ export function compareProjectSnapshots(saved: ProjectSnapshot, current: Project
     modeChanged: saved.journey.mode !== current.journey.mode,
     photoChanged: saved.forms.photo?.values.image !== current.forms.photo?.values.image,
     referencePhotosChanged: !sameData(saved.forms.photoReferences?.values.photos ?? [], current.forms.photoReferences?.values.photos ?? []),
+    manufacturingChanged: !sameData(saved.forms.manufacturing?.values ?? null, current.forms.manufacturing?.values ?? null),
     inputsChanged: !sameData(saved.forms, current.forms),
   };
 }

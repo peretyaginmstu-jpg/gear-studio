@@ -8,6 +8,7 @@ import { defaultModel, modelNames, type ModelKind } from '../lib/model.ts';
 import { prepareModelExport } from '../lib/modelExport.ts';
 import { inspectDocumentSTL, modelDocumentInput, modelNominalRows, projectSTLSilhouette } from '../lib/modelDocumentData.ts';
 import { createModelDocuments } from '../lib/modelDocuments.ts';
+import { emptyManufacturingDraft, reviewManufacturing } from '../lib/manufacturing.ts';
 
 const fonts = { regular: readFileSync(new URL('../public/fonts/NotoSans-Regular.ttf', import.meta.url)), bold: readFileSync(new URL('../public/fonts/NotoSans-Bold.ttf', import.meta.url)) };
 const provenance = { origin: 'Контрольный образец по фото', evidence: { measurement: 52, confirmedByUser: true, note: 'Полное происхождение остаётся в JSON' } };
@@ -108,4 +109,34 @@ test('long Cyrillic names and unsupported glyphs remain identifiable without bre
   assert.equal(JSON.parse(strFromU8(files['manifest.json'])).projectName, name);
   assert.equal(JSON.parse(strFromU8(files['unicode-passport.json'])).origin, 'Замер '.repeat(500));
   assert.ok(pdf.getPageCount() >= 4);
+});
+
+test('reviewed requirements enter the same PDF/passport bundle and remain visibly stale after model edits', async () => {
+  const source = prepareModelExport(defaultModel(), 'standard', provenance);
+  const manufacturing = reviewManufacturing(source.mesh, { ...emptyManufacturingDraft(), enabled: true, purpose: 'working', quantity: '12', material: 'PA12',
+    tolerances: [{ dimension: 'bore', lower: '+0,01', upper: '+0,03' }], notes: 'Контрольный образец; сначала проверить посадку.' });
+  for (const width of [10, 12]) {
+    const prepared = prepareModelExport({ ...defaultModel(), width }, 'standard', { ...provenance, manufacturing });
+    const input = modelDocumentInput(prepared, 'requirements.stl', 'Карточка мастерской');
+    const bundle = await createModelDocuments(input, fonts), files = unzipSync(bundle.zip), passport = JSON.parse(strFromU8(files['requirements-passport.json']));
+    assert.equal(passport.manufacturing.status, width === 10 ? 'reviewed' : 'needs-review');
+    assert.deepEqual(passport.manufacturing, input.manufacturing);
+    assert.equal(passport.manufacturing.dimensions[0].minimum, 8.01);
+    assert.ok(bundle.pages >= 4); assert.equal(bundle.pages, (await PDFDocument.load(bundle.pdf)).getPageCount());
+    assert.deepEqual(files['requirements.stl'], new Uint8Array(prepared.stl));
+  }
+  const prepared = prepareModelExport(defaultModel(), 'standard', { ...provenance, manufacturing }), input = modelDocumentInput(prepared, 'requirements.stl', 'Деталь');
+  input.manufacturing!.request.material = 'Изменён только PDF';
+  await assert.rejects(createModelDocuments(input, fonts), /Требования.*не соответствуют/);
+});
+
+test('long manufacturing notes and unfinished signed inputs preserve their draft and paginate', async () => {
+  const manufacturing = { ...emptyManufacturingDraft(), enabled: true, purpose: 'prototype' as const, quantity: '', material: 'Специальный материал',
+    notes: 'Сначала согласовать измерения и технологию. '.repeat(22), tolerances: [{ dimension: 'bore' as const, lower: '−', upper: '' }] };
+  const prepared = prepareModelExport(defaultModel(), 'standard', { ...provenance, manufacturing }), input = modelDocumentInput(prepared, 'draft.stl', 'Черновик мастерской');
+  const bundle = await createModelDocuments(input, fonts), files = unzipSync(bundle.zip);
+  const requirements = JSON.parse(strFromU8(files['draft-passport.json'])).manufacturing;
+  assert.equal(requirements.status, 'draft'); assert.equal(requirements.request.quantity, null);
+  assert.equal(requirements.dimensions[0].lowerInput, '−'); assert.equal(requirements.dimensions[0].minimum, null);
+  assert.ok(bundle.pages >= 5);
 });

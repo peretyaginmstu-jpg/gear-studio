@@ -3,13 +3,16 @@ import { modelDimensionsForReport, modelSpatialGeometryForReport, type ModelMesh
 import type { ModelProvenance } from './modelExport.ts';
 import { assessPrint, type PrintSettings } from './printability.ts';
 import { APP_VERSION } from './appVersion.ts';
+import { manufacturingReport, manufacturingPrintNotes } from './manufacturing.ts';
 
 /** A local preparation file, with the same captured provenance as the model's STL passport. */
 export function createPrintBrief(mesh: ModelMesh, validation: MeshValidation, settings: PrintSettings,
   provenance: ModelProvenance, createdAt = new Date().toISOString()) {
+  const manufacturing = manufacturingReport(mesh, provenance.manufacturing);
   return {
-    schema: 'zatseplenie.print-brief.v6', appVersion: APP_VERSION, createdAt, units: 'mm',
+    schema: 'zatseplenie.print-brief.v7', appVersion: APP_VERSION, createdAt, units: 'mm',
     origin: provenance.origin, evidence: structuredClone(provenance.evidence), parameters: mesh.params,
+    manufacturing, manufacturingNotes: manufacturingPrintNotes(manufacturing, settings.material),
     dimensions: modelDimensionsForReport(mesh),
     wormDimensions: 'wormDimensions' in mesh ? mesh.wormDimensions : null,
     cycloidalDimensions: 'cycloidalDimensions' in mesh ? mesh.cycloidalDimensions : null,

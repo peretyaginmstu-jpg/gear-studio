@@ -28,7 +28,7 @@ for (const kind of Object.keys(modelNames) as ModelKind[]) {
       assert.equal(passport.artifact.preset, preset);
       assert.equal(passport.artifact.requestedQuality.flankSamples, preset === 'standard' ? 12 : 32);
       assert.deepEqual(passport.artifact.actualTessellation, mesh.tessellation);
-      assert.equal(passport.schema, 'zatseplenie.gear.v6');
+      assert.equal(passport.schema, 'zatseplenie.gear.v7');
       assert.equal(passport.units, 'mm');
       assert.equal(passport.origin, provenance.origin);
       assert.deepEqual(passport.evidence, provenance.evidence);
