@@ -24,18 +24,18 @@ export function CheckoutActions({ model, choice, onChange, projectName, onAdjust
       {isPrint ? <Printer size={25} /> : <Download size={25} />}
       <div><span>Вы выбрали</span><h2>{isPrint ? 'Подготовку к печати' : choice.preset === 'pro' ? 'Pro STL + документы' : 'Standard STL'}</h2></div>
     </div>
-    <p className="delivery-intro">{isPrint ? 'Укажите принтер и материал. Мы оценим геометрию и подготовим задание для расчёта или пробной печати.' : 'Файл будет построен по подтверждённой модели. Скачайте STL отдельно или подготовьте комплект с PDF размерного листа и JSON-паспортом.'}</p>
-    <div className="checkout-total"><span>{isPrint ? 'Оценка и файлы задания' : 'Итого за файлы сейчас'}</span><strong>Бесплатно</strong></div>
-    <ManufacturingRequirements mesh={model.mesh} draft={manufacturing} setDraft={setManufacturing} />
-    <SampleInspections mesh={model.mesh} manufacturing={manufacturing} records={inspections} setRecords={setInspections} projectName={projectName} />
-    {choice.kind === 'file' && choice.preset === 'pro' && <p className="access-note">Pro бесплатно в раннем доступе</p>}
+    <p className="delivery-intro">{isPrint ? 'Принтер и материал — мы оценим геометрию и дадим задание для печати.' : 'STL по подтверждённой модели; PDF и паспорт — в том же окне.'} Бесплатно.</p>
     <button className="primary-button full package-primary" onClick={() => isPrint ? setPrintOpen(true) : setExportPreset(choice.preset)}>
       {isPrint ? 'Настроить печать и получить задание' : `Скачать ${choice.preset === 'pro' ? 'Pro' : 'Standard'} STL`} <ArrowRight size={20} />
     </button>
     {isPrint && <button className="secondary-button full" onClick={() => setExportPreset('standard')}><Download size={18} /> Скачать STL этой модели</button>}
     <LayersOrder model={model} projectName={projectName} manufacturing={manufacturing} setInspections={setInspections} onAdjustParams={onAdjustParams} />
+    <div className="tool-tray checkout-tray"><span className="tool-tray-label">Для мастерской</span><div className="tool-tray-chips">
+      <ManufacturingRequirements mesh={model.mesh} draft={manufacturing} setDraft={setManufacturing} />
+      <SampleInspections mesh={model.mesh} manufacturing={manufacturing} records={inspections} setRecords={setInspections} projectName={projectName} />
+    </div></div>
     <button className="inline-link" onClick={onChange}>Изменить способ получения</button>
-    <p className="delivery-note"><Info size={19} />{isPrint ? 'Задание скачивается на ваше устройство. Заказ исполнителю не отправляется; стоимость изготовления и оплата будут отдельным шагом позже.' : 'Оплата не требуется. Скачивание не подтверждает пригодность детали под нагрузкой: перед изготовлением проверьте сопряжение.'}</p>
+    <p className="delivery-note"><Info size={19} />{isPrint ? 'Задание скачивается на ваше устройство и никуда не отправляется.' : 'Перед изготовлением проверьте сопряжение: файл не подтверждает работу под нагрузкой.'}</p>
     <ExportDialog open={exportPreset !== null} onOpenChange={open => { if (!open) setExportPreset(null); }} params={model.params} preset={exportPreset ?? 'standard'} origin={model.origin} evidence={model.evidence} projectName={projectName} manufacturing={manufacturing} inspections={inspections} />
     <PrintDialog open={printOpen} onOpenChange={setPrintOpen} mesh={model.mesh} validation={model.validation} provenance={{ origin: model.origin, evidence: model.evidence, manufacturing, inspections }} />
   </>;

@@ -9,7 +9,7 @@ const parse = (v: string) => v.trim() === '' ? NaN : Number(v.replace(',', '.'))
 const attempt = <T,>(fn: () => T): T | Error => { try { return fn(); } catch (e) { return e instanceof Error ? e : new Error(String(e)); } };
 
 /** Control size over pins for the current parameters and, from a reading, the tooth thickness it implies. */
-export function PinMeasurementTool({ params, onApplyShift }: { params: ModelParams; onApplyShift?: (profileShift: number) => void }) {
+export function PinMeasurementTool({ params, onApplyShift, defaultOpen = false }: { params: ModelParams; onApplyShift?: (profileShift: number) => void; defaultOpen?: boolean }) {
   const [pin, setPin] = useState(''), [measured, setMeasured] = useState('');
   const gear = useMemo(() => pinMeasurementKinds.includes(params.kind) ? gearKernelParams(params) : null, [params]);
   const recommended = useMemo(() => gear ? attempt(() => recommendedPinDiameter(gear)) : null, [gear]);
@@ -18,7 +18,7 @@ export function PinMeasurementTool({ params, onApplyShift }: { params: ModelPara
   const inverse = useMemo(() => gear && Number.isFinite(dp) && Number.isFinite(parse(measured)) ? attempt(() => inversePinMeasurement(gear, dp, parse(measured))) : null, [gear, dp, measured]);
   if (!gear) return null;
   const internal = params.kind === 'internal' || params.kind === 'internal-helical', ball = params.kind !== 'spur' && params.kind !== 'internal';
-  return <details className="advanced-settings pin-tool"><summary><CircleDot size={16} /> Размер по {ball ? 'шарикам' : 'роликам'} (M)</summary>
+  return <details className="advanced-settings pin-tool" open={defaultOpen || undefined}><summary><CircleDot size={16} /> Размер по {ball ? 'шарикам' : 'роликам'} (M)</summary>
     <p className="field-help">Два {ball ? 'шарика' : 'ролика'} во {internal ? 'впадинах внутреннего венца; M — расстояние между ними' : 'впадинах напротив друг друга; M — размер через них микрометром'}. Размер учитывает смещение и утонение зуба.</p>
     <div className="input-grid">
       <label className="number-field">Диаметр {ball ? 'шарика' : 'ролика'}<em>dp, мм</em><input aria-label="Диаметр ролика" inputMode="decimal" value={pin} placeholder={Number.isFinite(dp) ? String(dp) : ''} onChange={e => setPin(e.target.value)} /></label>

@@ -7,8 +7,8 @@ import { downloadBlob } from '@/lib/download';
 import { changeFamilyAnswer, familyMemo, familyQuestion, identifyFamily, selectFamilyApplication,
   type FamilyAnswers, type FamilyApplication, type FamilyPhotoHint, type FamilyQuestionId } from '@/lib/familyIdentification';
 
-export function FamilyAssistant({ active, source, draftIdentity = 'default', photoHint = null, application, engaged, onDraftChange, onApply, onCancel }: {
-  active: boolean; source: 'manual' | 'photo'; draftIdentity?: string; photoHint?: FamilyPhotoHint | null;
+export function FamilyAssistant({ active, source, draftIdentity = 'default', photoHint = null, application, engaged, onDraftChange, onApply, onCancel, defaultOpen = false }: {
+  defaultOpen?: boolean; active: boolean; source: 'manual' | 'photo'; draftIdentity?: string; photoHint?: FamilyPhotoHint | null;
   application: FamilyApplication | null; engaged: boolean;
   onDraftChange: () => void; onApply: (application: FamilyApplication) => void; onCancel: () => void;
 }) {
@@ -40,7 +40,7 @@ export function FamilyAssistant({ active, source, draftIdentity = 'default', pho
     setLimitedAcknowledged(false); onDraftChange();
   };
   const accept = () => { if (active) onApply(selectFamilyApplication(answers, source, photoHint, limitedAcknowledged || accepted)); };
-  return <details ref={disclosure} className="family-assistant">
+  return <details ref={disclosure} className="family-assistant" open={defaultOpen || undefined}>
     <summary><HelpCircle size={20} /><span>Помочь определить тип<small>По тому, что видно на детали</small></span>{application && <Check size={18} />}</summary>
     <div className="family-assistant-body">
       <p className="family-intro">Несколько вопросов о рабочих зубьях. Размеры и профиль уточним отдельно.</p>
