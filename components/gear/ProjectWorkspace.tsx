@@ -12,6 +12,7 @@ import { ProjectContext, type ProjectDraftStore } from './ProjectContext';
 import { addProjectVersion, restoreProjectVersion, forkProjectVersion } from '@/lib/projectVersions';
 import { ProjectHistory } from './ProjectHistory';
 import { LayersAccount } from './LayersAccount';
+import { backupEntry, markBackedUp, shouldRemindBackup, snoozeBackup } from '@/lib/backupReminder';
 import { layersUrl, modelTitle } from '@/lib/layersOrder';
 import { captureReferrer, completeLayersLogin, draftManifest, rememberSyncedRevision } from '@/lib/layersLink';
 
@@ -98,6 +99,13 @@ function ProjectEditor({ loaded, activate, component: Studio }: { loaded: Loaded
   const inputOwners = useRef(new Set<symbol>());
   const busy = actionBusy || inputBusy;
   const fileInput = useRef<HTMLInputElement>(null);
+  // Local-only storage: once there is a model or saved versions, remind to keep a copy outside this browser.
+  const [remindBackup, setRemindBackup] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setRemindBackup(!archived && shouldRemindBackup({ hasWork: !!loaded.document.journey.built || loaded.document.versions.length > 0,
+      updatedAt: loaded.document.updatedAt, entry: backupEntry(loaded.document.id) })), 0);
+    return () => clearTimeout(timer);
+  }, [loaded, archived]);
 
   const snapshot = useCallback((): ProjectDocument => archived ? document.current : ({ ...document.current, appVersion: APP_VERSION, updatedAt: new Date().toISOString(),
     journey: journey.current ? snapshotJourney(journey.current) : document.current.journey }), [archived]);
@@ -175,7 +183,7 @@ function ProjectEditor({ loaded, activate, component: Studio }: { loaded: Loaded
   };
   const exportProject = () => {
     // Validate our own portable file as well as imports; never label a broken snapshot a backup.
-    try { const current = snapshot(), contents = serializeProject(current); parseProject(contents); downloadBlob(contents, 'application/json', projectFilename(current.name)); setNotice('Файл проекта подготовлен к скачиванию вместе с фото, измерениями и историей версий. Проверьте загрузки браузера.'); }
+    try { const current = snapshot(), contents = serializeProject(current); parseProject(contents); downloadBlob(contents, 'application/json', projectFilename(current.name)); markBackedUp(current.id); setRemindBackup(false); setNotice('Файл проекта подготовлен к скачиванию вместе с фото, измерениями и историей версий. Проверьте загрузки браузера.'); }
     catch (error) { setNotice(error instanceof Error ? error.message : 'Не удалось подготовить файл проекта.'); }
   };
   const changeHistory = (versionId?: string, versionName = '', versionNote = '') => run(async () => {
@@ -243,6 +251,9 @@ function ProjectEditor({ loaded, activate, component: Studio }: { loaded: Loaded
         <button type="button" className="text-button" disabled={busy} onClick={() => { void run(async () => { if (await flush()) activate({ document: newProject(), revision: null, restored: false }); }); }}><Plus size={17} /> Новый</button>
       </div>
     </div>
+    {remindBackup && <div className="project-backup-banner" role="status"><span>Проект хранится только в этом браузере. Скачайте файл или сохраните в аккаунт Layers, чтобы не потерять работу.</span>
+      <button type="button" className="text-button" disabled={busy} onClick={exportProject}><Download size={16} /> Скачать проект</button>
+      <button type="button" className="text-button" onClick={() => { snoozeBackup(loaded.document.id); setRemindBackup(false); }}>Напомнить через неделю</button></div>}
     {archived && <div className="project-archive-banner" ref={archiveBanner} tabIndex={-1} role="region" aria-label="Архивный проект"><Archive size={22} /><div><strong>Проект в архиве</strong><p>Фото, параметры и история сохранены. Верните проект в работу, чтобы продолжить редактирование и открыть версии. Файл проекта можно скачать сейчас.</p></div>
       <button className="secondary-button" disabled={busy} onClick={() => { void changeArchive({ id: loaded.document.id, name, revision: revision.current! }, false); }}><ArchiveRestore size={17} /> Вернуть в работу</button></div>}
     <input ref={fileInput} className="visually-hidden" type="file" aria-label="Открыть файл проекта" accept=".json,.gear.json,application/json" onChange={event => { importProject(event.target.files?.[0]); event.target.value = ''; }} />
@@ -258,7 +269,7 @@ function ProjectEditor({ loaded, activate, component: Studio }: { loaded: Loaded
       <DialogTitle>Мои проекты</DialogTitle><DialogDescription>Сохраняются в этом браузере. Для переноса на другое устройство и резервной копии скачайте файл проекта. Очистка данных сайта удалит локальные записи.</DialogDescription>
       <div className="project-library-views" role="group" aria-label="Раздел проектов">{(['working', 'archived'] as const).map(view => <button key={view} ref={libraryView === view ? libraryViewButton : undefined} type="button" disabled={busy} aria-pressed={libraryView === view} onClick={() => { setLibraryView(view); setLibraryError(null); }}>
         {view === 'working' ? `В работе · ${workingCount}` : `Архив · ${archivedCount}`}</button>)}</div>
-      <LayersAccount projectId={loaded.document.id} disabled={busy || archived}
+      <LayersAccount projectId={loaded.document.id} disabled={busy || archived} onBackedUp={() => { markBackedUp(loaded.document.id); setRemindBackup(false); }}
         serialize={async () => { if (!await flush()) { setLibraryError(failureMessage.current ?? 'Сначала сохраните текущую работу.'); return null; } return serializeProject(snapshot()); }}
         openCloud={async (data, cloudRevision) => { await run(async () => {
           const doc = parseProject(data);

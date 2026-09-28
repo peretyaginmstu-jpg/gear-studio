@@ -9,8 +9,8 @@ import { accountToken, beginLayersLogin, forgetAccount, getAccount, getCloudProj
  * Layers account inside the project library: cloud copies of projects and the account's gear orders.
  * Sync is explicit: «Сохранить в Layers» never overwrites a newer cloud revision silently.
  */
-export function LayersAccount({ projectId, serialize, openCloud, disabled }: {
-  projectId: string; serialize: () => Promise<string | null>; openCloud: (data: string, cloudRevision: number) => Promise<void>; disabled: boolean;
+export function LayersAccount({ projectId, serialize, openCloud, disabled, onBackedUp }: {
+  projectId: string; serialize: () => Promise<string | null>; openCloud: (data: string, cloudRevision: number) => Promise<void>; disabled: boolean; onBackedUp: () => void;
 }) {
   const [token, setToken] = useState<string | null>(null), [account, setAccount] = useState<Account | null>(null);
   const [projects, setProjects] = useState<CloudProject[]>([]), [message, setMessage] = useState(''), [busy, setBusy] = useState(false);
@@ -23,7 +23,7 @@ export function LayersAccount({ projectId, serialize, openCloud, disabled }: {
   const act = async (task: () => Promise<void>) => { setBusy(true); setMessage(''); try { await task(); } catch (e) { setMessage(e instanceof Error ? e.message : 'Не удалось выполнить.'); } finally { setBusy(false); } };
   const save = () => act(async () => {
     const data = await serialize(); if (!data || !token) return;
-    try { const r = await putCloudProject(token, projectId, data, syncedRevision(projectId)); rememberSyncedRevision(projectId, r.revision); setMessage(`Сохранено в Layers, версия ${r.revision}.`); await load(token); }
+    try { const r = await putCloudProject(token, projectId, data, syncedRevision(projectId)); rememberSyncedRevision(projectId, r.revision); onBackedUp(); setMessage(`Сохранено в Layers, версия ${r.revision}.`); await load(token); }
     catch (e) { if ((e as { status?: number }).status === 409) throw new Error('В аккаунте более новая версия этого проекта (с другого устройства). Откройте её ниже или скачайте файл, чтобы сохранить обе.'); throw e; }
   });
   if (!token) return <section className="layers-account" aria-label="Аккаунт Layers">

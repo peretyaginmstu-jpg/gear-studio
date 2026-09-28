@@ -8,6 +8,7 @@ import { ReferenceDialog } from '@/components/gear/ReferenceDialog';
 import { ParameterEditor } from '@/components/gear/ParameterEditor';
 import { SpanMeasurementAssistant } from '@/components/gear/SpanMeasurementAssistant';
 import { PinMeasurementTool } from '@/components/gear/PinMeasurementTool';
+import { StarterTools } from '@/components/gear/StarterTools';
 import { FamilyAssistant } from '@/components/gear/FamilyAssistant';
 import { ModelChips, ModelSummary, ModelInspection } from '@/components/gear/ModelSummary';
 import { CheckoutActions } from '@/components/gear/CheckoutActions';
@@ -112,6 +113,7 @@ function Studio({ project }: { project: ProjectSession }) {
             <div hidden={state.mode !== 'manual'}>
               {photoHandoffNotice && <p className="family-notice" role="status">{photoHandoffNotice}</p>}
               <ReferencePhotos controller={referencePhotos} active={inputActive && state.mode === 'manual'} disabled={project.busy} />
+              <StarterTools onApply={params => { send({ type: 'clear-manual-span' }); send({ type: 'clear-manual-family' }); edit(params); }} />
               <ParameterEditor active={inputActive && state.mode === 'manual'} params={state.manualDraft} onChange={change} onPatch={patch => edit({ ...state.manualDraft, ...patch })} onKind={selectKind}
                 onHand={hand => edit({ ...state.manualDraft, wormHand: hand })} onReset={() => edit(defaultModel(state.manualDraft.kind))} onReference={() => setReference(true)}
                 familyAssistant={<FamilyAssistant active={inputActive && state.mode === 'manual'} source="manual" application={state.manualFamily} engaged={state.manualFamilyPending || !!state.manualFamily}
