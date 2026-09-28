@@ -102,14 +102,14 @@ test('standard keyway follows GOST 23360 ranges', () => {
 
 test('cap triangulation stays exact over a sweep of small gears, keyways and coarse sampling', () => {
   let checked = 0;
-  for (const teeth of [12, 14, 24, 40]) for (const module of [1, 2.5]) for (const flankSamples of [5, 12]) {
-    const rf = deriveGear(p({ teeth, module, bore: 0, profileShift: teeth < 20 ? .5 : 0 })).dimensions.rootDiameter / 2;
+  for (const teeth of [12, 14, 24, 40]) for (const mn of [1, 2.5]) for (const flankSamples of [5, 12]) {
+    const rf = deriveGear(p({ teeth, module: mn, bore: 0, profileShift: teeth < 20 ? .5 : 0 })).dimensions.rootDiameter / 2;
     for (const fraction of [.3, .55]) {
       const bore = Math.round(2 * rf * fraction * 10) / 10, key = { width: +(bore * .35).toFixed(2), depth: +(bore * .15).toFixed(2) };
-      let mesh; try { mesh = buildGearMesh(p({ teeth, module, bore, profileShift: teeth < 20 ? .5 : 0, keywayWidth: key.width, keywayDepth: key.depth }), { flankSamples }); } catch (e) { assert.match((e as { code: string }).code, /KEYWAY_WALL|BORE_INTERSECTION/); continue; }
+      let mesh; try { mesh = buildGearMesh(p({ teeth, module: mn, bore, profileShift: teeth < 20 ? .5 : 0, keywayWidth: key.width, keywayDepth: key.depth }), { flankSamples }); } catch (e) { assert.match((e as { code: string }).code, /KEYWAY_WALL|BORE_INTERSECTION/); continue; }
       assert.ok(validateMesh(mesh).valid);
       const cap = capArea(mesh, 6), expected = area(mesh.profile.outer) - area(mesh.profile.hole!);
-      assert.equal(cap.flipped, 0); assert.ok(Math.abs(cap.total - expected) < 1e-4 * expected, JSON.stringify({ teeth, module, bore }));
+      assert.equal(cap.flipped, 0); assert.ok(Math.abs(cap.total - expected) < 1e-4 * expected, JSON.stringify({ teeth, mn, bore }));
       checked++;
     }
   }
