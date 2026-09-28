@@ -1,2 +1,2 @@
 /** Public version shared by the interface and every generated report. */
-export const APP_VERSION = '0.25.0';
+export const APP_VERSION = '0.26.0';

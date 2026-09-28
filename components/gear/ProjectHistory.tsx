@@ -50,6 +50,7 @@ export function ProjectHistory({ project, busy, error, onClose, onSave, onRestor
       {comparison.photoChanged && <p>Фотография отличается.</p>}
       {comparison.referencePhotosChanged && <p>Дополнительные ракурсы или их заметки отличаются.</p>}
       {comparison.manufacturingChanged && <p>Требования к изготовлению или отметка их проверки отличаются.</p>}
+      {comparison.inspectionsChanged && <p>Протоколы измерений образцов отличаются.</p>}
       {comparison.inputsChanged && <p>Ответы, измерения, настройки или шаг помощника отличаются.</p>}
       <p className="version-restore-note">Перед возвратом сохраним текущую работу отдельной версией. Построенную модель потребуется снова проверить перед получением файлов.</p>
       <div className="version-actions"><button type="button" className="secondary-button" disabled={busy || atLimit} onClick={() => onRestore(selected.id)}><RotateCcw size={16} /> Восстановить версию</button>

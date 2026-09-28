@@ -2,21 +2,23 @@ import { exportBinarySTL, validateMesh, type MeshQuality, type MeshValidation } 
 import { buildModelMesh, modelDimensionsForReport, modelSpatialGeometryForReport, type ModelMesh, type ModelParams } from './model.ts';
 import { APP_VERSION } from './appVersion.ts';
 import { manufacturingReport, type ManufacturingDraft } from './manufacturing.ts';
+import { sampleInspectionReports, type SampleInspection } from './sampleInspection.ts';
 
 export type ExportPreset = 'standard' | 'pro';
 export const exportPresets: Record<ExportPreset, { title: string; detail: string; quality: MeshQuality }> = {
   standard: { title: 'Standard STL', detail: 'Средняя детализация', quality: { flankSamples: 12 } },
   pro: { title: 'Pro STL + документы', detail: 'Высокая детализация', quality: { flankSamples: 32 } },
 };
-export interface ModelProvenance { origin: string; evidence: unknown; manufacturing?: ManufacturingDraft }
+export interface ModelProvenance { origin: string; evidence: unknown; manufacturing?: ManufacturingDraft; inspections?: SampleInspection[] }
 
 /** Always describe the supplied mesh, including its actual tessellation/count. */
 export function createModelPassport(mesh: ModelMesh, validation: MeshValidation, provenance: ModelProvenance,
   preset: ExportPreset | null = null) {
   return {
-    schema: 'zatseplenie.gear.v7', appVersion: APP_VERSION, units: 'mm',
+    schema: 'zatseplenie.gear.v8', appVersion: APP_VERSION, units: 'mm',
     origin: provenance.origin, evidence: provenance.evidence, parameters: mesh.params,
     manufacturing: manufacturingReport(mesh, provenance.manufacturing),
+    inspections: sampleInspectionReports(provenance.inspections, mesh, provenance.manufacturing),
     artifact: { purpose: preset ? 'STL-export' : 'current-preview-model', preset,
       requestedQuality: preset ? exportPresets[preset].quality : null,
       actualTessellation: mesh.tessellation, vertices: mesh.positions.length / 3, triangles: mesh.indices.length / 3,

@@ -3,6 +3,7 @@ import fontkit from '@pdf-lib/fontkit';
 import { zipSync, strToU8 } from 'fflate';
 import { dimensionText, inspectDocumentSTL, projectSTLSilhouette, type ModelDocumentInput, type Projection } from './modelDocumentData.ts';
 import { manufacturingStatus, manufacturingPurposes, manufacturingProcesses, signedDeviation } from './manufacturing.ts';
+import { inspectionResultLabels } from './sampleInspection.ts';
 
 export interface DocumentFonts { regular: Uint8Array; bold: Uint8Array }
 export const documentNotes = [
@@ -39,6 +40,8 @@ export async function createModelDocuments(input: ModelDocumentInput, fonts: Doc
     throw new Error('Паспорт не соответствует подготовленному STL.');
   if (JSON.stringify(passport.manufacturing ?? null) !== JSON.stringify(input.manufacturing ?? null))
     throw new Error('Требования в документах не соответствуют паспорту STL.');
+  if (JSON.stringify(passport.inspections ?? []) !== JSON.stringify(input.inspections))
+    throw new Error('Протоколы в документах не соответствуют паспорту STL.');
   const hash = await sha256(input.stl), stem = input.filename.slice(0, -4);
   const pdfName = `${stem}-dimensions.pdf`, passportName = `${stem}-passport.json`;
   const pdfDoc = await PDFDocument.create(); pdfDoc.registerFontkit(fontkit);
@@ -127,7 +130,7 @@ export async function createModelDocuments(input: ModelDocumentInput, fonts: Doc
     y -= rowHeight + 3;
   }
 
-  let sectionTitle = input.manufacturing ? 'Требования к изготовлению' : 'Происхождение и условия';
+  let sectionTitle = input.manufacturing ? 'Требования к изготовлению' : input.inspections.length ? 'Протокол измерений образца' : 'Происхождение и условия';
   let notePage = newPage(sectionTitle); y = 499;
   const paragraph = (value: string, strong = false) => {
     const lines = wrap(value, strong ? 11 : 10, usable, strong ? bold : regular);
@@ -160,6 +163,32 @@ export async function createModelDocuments(input: ModelDocumentInput, fonts: Doc
     if (m.issues.length) { paragraph('Исправить перед проверкой', true); m.issues.forEach(value => paragraph(value)); }
     paragraph(`Останется согласовать: ${m.clarifications.join('; ')}.`);
     paragraph(m.interpretation);
+  }
+  for (const [index, record] of input.inspections.entries()) {
+    sectionTitle = 'Протокол измерений образца';
+    if (index || input.manufacturing) { notePage = newPage(sectionTitle); y = 499; }
+    paragraph(`Образец: ${record.sample || 'не обозначен'}`, true);
+    paragraph(`Протокол ${record.id}${record.basedOn ? `; исправление записи ${record.basedOn}` : ''}.`);
+    paragraph(record.reference === 'current' ? 'Исходная модель и требования совпадают с текущими.' : 'ПРЕЖНИЕ ТРЕБОВАНИЯ: измерения относятся к сохранённой модели. Они не подтверждают размеры или пригодность STL в этом комплекте.', true);
+    paragraph(`Исходная модель: ${record.basis.modelName}; приложение ${record.basis.appVersion}. Полные исходные параметры и требования сохранены в inspections JSON-паспорта.`);
+    paragraph(`Материал по исходному заданию: ${record.basis.requirements.material || 'не задан'}. Способ: ${manufacturingProcesses[record.basis.requirements.process]}.`);
+    paragraph(`Дата измерений: ${record.measuredOn || 'не указана'}; исполнитель измерений: ${record.operator || 'не указан'}.`);
+    paragraph(`Инструмент и метод: ${record.instrument || 'не указаны'}`);
+    paragraph(`Условия: ${record.conditions || 'не указаны'}`);
+    paragraph(`Основание U: ${record.uncertaintyBasis || 'не указано; неопределённость не подставляется автоматически'}`);
+    for (const row of record.rows) {
+      paragraph(`${row.label}: номинал ${dimensionText(row.nominal)} мм; пределы ${dimensionText(row.minimum)}...${dimensionText(row.maximum)} мм.`, true);
+      paragraph(`Отсчёты, мм: ${row.input || 'не введены'}. U, мм: ${row.uncertaintyInput || 'не задана'}.`);
+      if (row.errors.length) row.errors.forEach(error => paragraph(error));
+      else row.readings.forEach((reading, i) => paragraph(`${i + 1}. ${dimensionText(reading.value!)} мм${row.uncertainty !== null ? `; интервал ${dimensionText(reading.low!)}...${dimensionText(reading.high!)} мм` : ''}: ${inspectionResultLabels[reading.result]}.`));
+    }
+    paragraph(`Сравнение: ${inspectionResultLabels[record.result]}`, true);
+    paragraph(record.recordState === 'recorded' ? `Зафиксировано пользователем: ${record.recordedAt}.` : 'ЧЕРНОВИК: запись ещё не зафиксирована пользователем.');
+    if (record.issues.length) record.issues.forEach(issue => paragraph(issue));
+    if (record.notes) paragraph(`Примечания: ${record.notes}`);
+    paragraph(record.rule); paragraph(record.interpretation);
+  }
+  if (input.manufacturing || input.inspections.length) {
     sectionTitle = 'Происхождение и условия'; notePage = newPage(sectionTitle); y = 499;
   }
   paragraph('Исходные данные', true);

@@ -9,6 +9,7 @@ import { prepareModelExport } from '../lib/modelExport.ts';
 import { inspectDocumentSTL, modelDocumentInput, modelNominalRows, projectSTLSilhouette } from '../lib/modelDocumentData.ts';
 import { createModelDocuments } from '../lib/modelDocuments.ts';
 import { emptyManufacturingDraft, reviewManufacturing } from '../lib/manufacturing.ts';
+import { newSampleInspection, recordSampleInspection, copySampleInspection } from '../lib/sampleInspection.ts';
 
 const fonts = { regular: readFileSync(new URL('../public/fonts/NotoSans-Regular.ttf', import.meta.url)), bold: readFileSync(new URL('../public/fonts/NotoSans-Bold.ttf', import.meta.url)) };
 const provenance = { origin: 'Контрольный образец по фото', evidence: { measurement: 52, confirmedByUser: true, note: 'Полное происхождение остаётся в JSON' } };
@@ -139,4 +140,40 @@ test('long manufacturing notes and unfinished signed inputs preserve their draft
   assert.equal(requirements.status, 'draft'); assert.equal(requirements.request.quantity, null);
   assert.equal(requirements.dimensions[0].lowerInput, '−'); assert.equal(requirements.dimensions[0].minimum, null);
   assert.ok(bundle.pages >= 5);
+});
+
+test('current and historical sample records enter PDF/ZIP unchanged and cannot be substituted independently', async () => {
+  const base = prepareModelExport(defaultModel(), 'standard', provenance);
+  const manufacturing = reviewManufacturing(base.mesh, { ...emptyManufacturingDraft(), enabled: true, purpose: 'prototype', material: 'PETG',
+    tolerances: [{ dimension: 'bore', lower: '0.01', upper: '0.03' }] });
+  const draft = newSampleInspection(base.mesh, manufacturing); draft.sample = 'Образец 026'; draft.instrument = 'Контрольный прибор';
+  draft.readings[0].values = '8,02;8,04'; draft.readings[0].uncertainty = '0,005'; draft.uncertaintyBasis = 'Синтетические данные, k=2';
+  const record = recordSampleInspection(draft, base.mesh, manufacturing);
+  for (const bore of [8, 9]) {
+    const prepared = prepareModelExport({ ...defaultModel(), bore }, 'pro', { ...provenance, manufacturing, inspections: [record] });
+    const input = modelDocumentInput(prepared, 'inspection.stl', 'Контроль образца');
+    assert.equal(input.inspections[0].reference, bore === 8 ? 'current' : 'historical');
+    assert.equal(input.inspections[0].result, 'outside'); assert.equal(input.inspections[0].rows[0].nominal, 8);
+    const bundle = await createModelDocuments(input, fonts), files = unzipSync(bundle.zip);
+    assert.deepEqual(JSON.parse(strFromU8(files['inspection-passport.json'])).inspections, input.inspections);
+    assert.deepEqual(files['inspection.stl'], new Uint8Array(prepared.stl)); assert.deepEqual(files['inspection-dimensions.pdf'], bundle.pdf);
+    assert.ok(bundle.pages >= 5);
+    input.inspections[0].rows[0].minimum = 0;
+    await assert.rejects(createModelDocuments(input, fonts), /Протоколы.*не соответствуют/);
+  }
+});
+
+test('inspection-only documents retain every draft and frozen limit when current manufacturing is disabled', async () => {
+  const base = prepareModelExport(defaultModel(), 'standard', provenance);
+  const manufacturing = reviewManufacturing(base.mesh, { ...emptyManufacturingDraft(), enabled: true, purpose: 'prototype',
+    tolerances: [{ dimension: 'width', lower: '-0.1', upper: '0.1' }] });
+  const first = newSampleInspection(base.mesh, manufacturing); first.sample = 'Длинный черновик'; first.readings[0].values = '10,0;';
+  first.notes = 'Согласовать метод измерения, места контроля и неопределённость. '.repeat(15);
+  const second = copySampleInspection(first);
+  const prepared = prepareModelExport(defaultModel(), 'standard', { ...provenance, manufacturing: { ...manufacturing, enabled: false }, inspections: [first, second] });
+  const input = modelDocumentInput(prepared, 'inspection-draft.stl', 'Черновики контроля'), bundle = await createModelDocuments(input, fonts);
+  assert.equal(input.manufacturing, null); assert.ok(input.inspections.every(r => r.reference === 'historical' && r.recordState === 'draft'));
+  assert.ok(bundle.pages >= 5); assert.equal(bundle.pages, (await PDFDocument.load(bundle.pdf)).getPageCount());
+  const passport = JSON.parse(strFromU8(unzipSync(bundle.zip)['inspection-draft-passport.json']));
+  assert.equal(passport.inspections[0].rows[0].input, '10,0;'); assert.equal(passport.inspections[1].basedOn, first.id);
 });

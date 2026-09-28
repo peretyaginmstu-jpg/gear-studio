@@ -113,12 +113,12 @@ test('changing another project archive status does not steal active selection', 
   await setProjectArchived(a.id, archive.revision, false); assert.equal((await listProjects()).activeId, b.id);
 });
 
-test('older database clients fail instead of dropping the archive marker; files retain portable v3', async () => {
+test('older database clients fail instead of dropping the archive marker; files retain the current portable format', async () => {
   const p = fixture(), v = await writeProject(p, null); await setProjectArchived(p.id, v, true);
   await assert.rejects(open(1), error => error instanceof DOMException && error.name === 'VersionError');
   assert.ok((await readProject(p.id)).archivedAt);
   const portable = JSON.parse((await row(p.id)).contents);
-  assert.equal(portable.schema, 'zatseplenie.project.v4'); assert.equal(portable.archivedAt, undefined);
+  assert.equal(portable.schema, 'zatseplenie.project.v5'); assert.equal(portable.archivedAt, undefined);
   assert.match(storageErrorMessage(new ProjectArchivedError()), /отдельной копией/);
 });
 

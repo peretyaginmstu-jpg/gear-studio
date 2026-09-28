@@ -37,6 +37,7 @@ export function ExportDocuments({ input, accepted }: { input: ModelDocumentInput
     <h3>Для проверки и передачи в мастерскую</h3>
     <p>PDF с проекциями, габаритами STL и номинальными параметрами. ZIP объединяет модель, этот PDF и JSON-паспорт. Фото и история передаются отдельным файлом проекта.</p>
     {input.manufacturing && <p className={`manufacturing-state ${input.manufacturing.status}`}>{manufacturingStatus[input.manufacturing.status]}. Карточка войдёт в PDF и паспорт с этим статусом.</p>}
+    {!!input.inspections.length && <p>Протоколов образцов: {input.inspections.length}. В PDF и паспорт войдут все записи с отметками черновика и прежних требований. Они не подтверждают пригодность новой модели.</p>}
     {!ready && <button className="secondary-button full" disabled={busy} onClick={() => { void prepare(); }}><FileText size={17} /> Подготовить PDF и ZIP</button>}
     {busy && <div className="document-progress"><p role="status"><LoaderCircle className="spin-icon" size={17} /> Готовим проекции и документы…</p><button className="text-button" onClick={() => { generation.current++; cancelTask.current?.(); cancelTask.current = null; setBusy(false); }}>Отменить подготовку</button></div>}
     {error && <p className="inline-error" role="alert">{error} STL и паспорт можно скачать отдельно.</p>}

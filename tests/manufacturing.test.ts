@@ -6,7 +6,7 @@ import { emptyManufacturingDraft, manufacturingDimensions, manufacturingDraftSch
 import { prepareModelExport } from '../lib/modelExport.ts';
 import { createPrintBrief } from '../lib/printBrief.ts';
 import { defaultPrintSettings } from '../lib/printability.ts';
-import { newProject, parseProject, serializeProject, snapshotJourney, restoreProjectJourney, PROJECT_SCHEMA, PREVIOUS_PROJECT_SCHEMA } from '../lib/project.ts';
+import { newProject, parseProject, serializeProject, snapshotJourney, restoreProjectJourney, PROJECT_SCHEMA, REFERENCE_PROJECT_SCHEMA } from '../lib/project.ts';
 import { addProjectVersion, restoreProjectVersion, compareProjectSnapshots } from '../lib/projectVersions.ts';
 import { initialJourney, transitionJourney } from '../lib/journey.ts';
 
@@ -107,7 +107,7 @@ test('requirements survive portable project/history restoration for both photo a
 
 test('v3 migrates intact, but a downgraded document cannot hide manufacturing data in current or historical forms', () => {
   const doc = addProjectVersion(newProject(), 'Старая версия');
-  const wire = JSON.parse(serializeProject(doc)); wire.schema = PREVIOUS_PROJECT_SCHEMA; wire.appVersion = '0.24.0';
+  const wire = JSON.parse(serializeProject(doc)); wire.schema = REFERENCE_PROJECT_SCHEMA; wire.appVersion = '0.24.0';
   assert.equal(parseProject(JSON.stringify(wire)).versions.length, 1);
   assert.equal(parseProject(JSON.stringify(wire)).schema, PROJECT_SCHEMA);
   wire.versions[0].forms.manufacturing = { identity: 'default', values: { draft: draft() } };
@@ -122,7 +122,7 @@ test('FDM settings never overwrite requested material/process and disagreements 
   const notes = manufacturingPrintNotes(report, 'PLA');
   assert.equal(notes.length, 2); assert.match(notes.join(' '), /Механическая обработка/); assert.match(notes.join(' '), /Сталь 40Х/);
   const brief = createPrintBrief(mesh, validateMesh(mesh), defaultPrintSettings, { ...origin, manufacturing: checked });
-  assert.equal(brief.schema, 'zatseplenie.print-brief.v7'); assert.deepEqual(brief.manufacturing, report);
+  assert.equal(brief.schema, 'zatseplenie.print-brief.v8'); assert.deepEqual(brief.manufacturing, report);
   assert.equal(brief.settings.material, defaultPrintSettings.material); assert.equal(brief.manufacturing?.request.material, 'Сталь 40Х');
   assert.equal(brief.manufacturingNotes.length, 2);
 });
