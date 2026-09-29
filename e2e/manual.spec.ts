@@ -8,10 +8,12 @@ async function buildKeyedGear(page: Page) {
   await page.getByRole('button', { name: /Задать параметры/ }).click();
   await num(page, 'Число зубьев').fill('30');
   await num(page, 'Отверстие').fill('12');
-  await page.getByText('Шпоночный паз и ступица').click();
+  await page.getByRole('button', { name: 'Паз и ступица' }).click();
   await page.getByRole('button', { name: /Паз по ГОСТ 23360/ }).click();
   await num(page, 'Диаметр ступицы').fill('30');
   await num(page, 'Длина ступицы').fill('8');
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('button', { name: /Паз и ступица.*паз 4×1.8/ })).toBeVisible();
   await expect(page.getByText('Параметры можно использовать для построения.')).toBeVisible();
   await page.getByRole('button', { name: 'Построить модель' }).click();
   await expect(page.getByRole('heading', { name: 'Проверьте модель' })).toBeVisible();
@@ -49,18 +51,20 @@ test('manual gear with keyway and hub: build, review, download STL and DXF', asy
 test('pin measurement and diametral pitch tools', async ({ page }) => {
   await page.goto('./');
   await page.getByRole('button', { name: /Задать параметры/ }).click();
+  await page.getByRole('button', { name: 'Измерить деталь' }).click();
   await page.getByText('Размер по роликам (M)').click();
   await expect(page.getByTestId('pin-measurement')).toHaveText(/^\d+,\d+ мм$/);
   await page.getByLabel('Диаметр ролика').fill('3.5');
   await page.getByLabel('Измеренный размер по роликам').fill('55');
   await page.getByRole('button', { name: /Применить x =/ }).click();
+  await page.keyboard.press('Escape');
   await expect(num(page, 'Смещение')).not.toHaveValue('0');
 
-  await page.getByRole('button', { name: 'Дюймовый DP' }).click();
+  await page.getByRole('button', { name: 'DP', exact: true }).click();
   await num(page, 'Diametral pitch').fill('24');
   await expect(page.getByText(/m = 25,4 \/ P = 1,05833/)).toBeVisible();
-  await page.getByRole('button', { name: 'Модуль, мм' }).click();
-  await expect(page.getByText('Это дюймовый шаг DP 24.')).toBeVisible();
+  await page.getByRole('button', { name: 'мм', exact: true }).click();
+  await expect(num(page, 'Модуль')).toHaveValue(/^1\.0583/);
 });
 
 // Headless Chromium names Cyrillic blob downloads "download", so this file name stays Latin.
@@ -70,12 +74,25 @@ test('project file round-trips through download and import', async ({ page }) =>
   await page.getByRole('button', { name: /Задать параметры/ }).click();
   await num(page, 'Число зубьев').fill('41');
   await expect(page.getByText('Сохранено на устройстве')).toBeVisible();
+  await page.getByText('Ещё', { exact: true }).click();
   const [file] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Скачать проект' }).click()]);
   expect(file.suggestedFilename()).toMatch(/\.gear\.json$/);
+  await page.getByText('Ещё', { exact: true }).click();
   await page.getByRole('button', { name: 'Новый' }).click();
   await expect(page.getByLabel('Название проекта')).toHaveValue('Новая деталь');
   await page.getByLabel('Открыть файл проекта').setInputFiles((await file.path())!);
   await expect(page.getByLabel('Название проекта')).toHaveValue('E2E gear (импорт)');
   // The imported journey reopens where it was saved: on the manual input step.
   await expect(num(page, 'Число зубьев')).toHaveValue('41');
+});
+
+test('contextual hint appears only when needed and fixes undercut in one click', async ({ page }) => {
+  await page.goto('./');
+  await page.getByRole('button', { name: /Задать параметры/ }).click();
+  await expect(page.locator('.context-hint')).toHaveCount(0);
+  await num(page, 'Число зубьев').fill('12');
+  await expect(page.getByText(/ножка зуба подрежется/)).toBeVisible();
+  await page.getByRole('button', { name: /Смещение x = / }).click();
+  await expect(page.locator('.context-hint')).toHaveCount(0);
+  await expect(page.getByText('Параметры можно использовать для построения.')).toBeVisible();
 });

@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react';
-import { Archive, ArchiveRestore, Check, Download, FolderOpen, LoaderCircle, Plus, Upload, Copy, RefreshCw, History } from 'lucide-react';
+import { Archive, ArchiveRestore, Check, Download, FolderOpen, LoaderCircle, Plus, Upload, Copy, RefreshCw, History, MoreHorizontal } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { APP_VERSION } from '@/lib/appVersion';
 import { newProject, parseProject, projectFilename, restoreProjectJourney, serializeProject, snapshotJourney, MAX_PROJECT_BYTES, type ProjectDocument } from '@/lib/project';
@@ -98,9 +98,15 @@ function ProjectEditor({ loaded, activate, component: Studio }: { loaded: Loaded
   const [actionBusy, setActionBusy] = useState(false), [inputBusy, setInputBusy] = useState(false);
   const inputOwners = useRef(new Set<symbol>());
   const busy = actionBusy || inputBusy;
-  const fileInput = useRef<HTMLInputElement>(null);
+  const fileInput = useRef<HTMLInputElement>(null), moreMenu = useRef<HTMLDetailsElement>(null);
   // Local-only storage: once there is a model or saved versions, remind to keep a copy outside this browser.
   const [remindBackup, setRemindBackup] = useState(false);
+  // The «Ещё» menu closes on an outside click or Escape, like any menu.
+  useEffect(() => {
+    const close = (event: Event) => { const menu = moreMenu.current; if (menu?.open && (event.type === 'keydown' ? (event as KeyboardEvent).key === 'Escape' : !menu.contains(event.target as Node))) menu.open = false; };
+    window.document.addEventListener('pointerdown', close); window.document.addEventListener('keydown', close);
+    return () => { window.document.removeEventListener('pointerdown', close); window.document.removeEventListener('keydown', close); };
+  }, []);
   useEffect(() => {
     const timer = setTimeout(() => setRemindBackup(!archived && shouldRemindBackup({ hasWork: !!loaded.document.journey.built || loaded.document.versions.length > 0,
       updatedAt: loaded.document.updatedAt, entry: backupEntry(loaded.document.id) })), 0);
@@ -245,10 +251,14 @@ function ProjectEditor({ loaded, activate, component: Studio }: { loaded: Loaded
         {archived ? 'В архиве' : inputBusy ? 'Обрабатываем фото…' : status === 'saved' ? 'Сохранено на устройстве' : status === 'saving' ? 'Сохраняем…' : 'Не сохранено'}</span>
       <div className="project-tools">
         <button type="button" className="text-button" disabled={busy} onClick={() => { void run(async () => { if (!await flush()) return; await refreshLibrary(); setSearch(''); setLibraryNotice(''); setLibraryError(null); setLibraryView(archived ? 'archived' : 'working'); setLibraryOpen(true); }); }}><FolderOpen size={17} /> Мои проекты</button>
-        <button type="button" className="text-button" disabled={busy || archived} onClick={() => { setHistoryDocument(snapshot()); setHistoryError(null); }}><History size={17} /> Версии</button>
-        <button type="button" className="text-button" disabled={busy} onClick={exportProject}><Download size={17} /> Скачать проект</button>
-        <button type="button" className="text-button" disabled={busy} onClick={() => fileInput.current?.click()}><Upload size={17} /> Открыть файл</button>
-        <button type="button" className="text-button" disabled={busy} onClick={() => { void run(async () => { if (await flush()) activate({ document: newProject(), revision: null, restored: false }); }); }}><Plus size={17} /> Новый</button>
+        <details className="project-more" ref={moreMenu}><summary className="text-button"><MoreHorizontal size={17} /> Ещё</summary>
+          <div className="project-more-menu" onClick={() => { if (moreMenu.current) moreMenu.current.open = false; }}>
+            <button type="button" className="text-button" disabled={busy || archived} onClick={() => { setHistoryDocument(snapshot()); setHistoryError(null); }}><History size={17} /> Версии</button>
+            <button type="button" className="text-button" disabled={busy} onClick={exportProject}><Download size={17} /> Скачать проект</button>
+            <button type="button" className="text-button" disabled={busy} onClick={() => fileInput.current?.click()}><Upload size={17} /> Открыть файл</button>
+            <button type="button" className="text-button" disabled={busy} onClick={() => { void run(async () => { if (await flush()) activate({ document: newProject(), revision: null, restored: false }); }); }}><Plus size={17} /> Новый</button>
+          </div>
+        </details>
       </div>
     </div>
     {remindBackup && <div className="project-backup-banner" role="status"><span>Проект хранится только в этом браузере. Скачайте файл или сохраните в аккаунт Layers, чтобы не потерять работу.</span>

@@ -31,10 +31,9 @@ export function SampleInspections({ mesh, manufacturing, records, setRecords, pr
       setRecords(previous => [...previous, next]); setSelected(next.id); setError('');
     } catch (e) { setError(e instanceof Error ? e.message : 'Не удалось начать протокол.'); }
   };
-  return <section className="manufacturing-summary inspection-summary" aria-label="Проверка образца">
-    <h3><ClipboardCheck size={19} /> Проверка образца</h3>
-    <p>{records.length ? `Протоколов в проекте: ${records.length}. Измерения сохраняются с исходными пределами.` : 'Изготовили пробную деталь? Запишите измерения и сравните их с требованиями мастерской.'}</p>
-    <button className="secondary-button full" onClick={() => setOpen(true)}><ClipboardCheck size={17} />{records.length ? 'Открыть протоколы' : 'Проверить образец'}</button>
+  return <>
+    <button type="button" className={`tool-chip${records.length ? ' active' : ''}`} aria-haspopup="dialog" onClick={() => setOpen(true)}>
+      <ClipboardCheck size={16} /><span>Проверка образца</span>{records.length > 0 && <b>{records.length}</b>}</button>
     <Dialog open={open} onOpenChange={setOpen}><DialogContent className="engineering-dialog manufacturing-dialog inspection-dialog">
       <DialogHeader><div className="dialog-kicker"><ClipboardCheck size={18} /> ПРОВЕРКА ОБРАЗЦА</div><DialogTitle>Измерения изготовленной детали</DialogTitle><DialogDescription>Сравните каждый отсчёт с требованиями. Протокол сохранится в проекте, PDF и паспорте модели.</DialogDescription></DialogHeader>
       <p>Записывайте фактические измерения. Числовое сравнение не заменяет решение о приёмке и проверку работы передачи.</p>
@@ -86,5 +85,5 @@ export function SampleInspections({ mesh, manufacturing, records, setRecords, pr
           catch (e) { setError(e instanceof Error ? e.message : 'Проверьте введённые измерения.'); }
         }}><ClipboardCheck size={17} /> Зафиксировать запись</button></div>
     </DialogContent></Dialog>
-  </section>;
+  </>;
 }

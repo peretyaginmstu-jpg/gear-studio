@@ -15,8 +15,8 @@ const roleHints: Record<ReferencePhotoRole, string> = {
   other: 'Укажите, что видно на снимке и какой вопрос он помогает уточнить. Заметка останется рядом с фото.',
 };
 
-export function ReferencePhotos({ controller, active, disabled = false, hint = 'Снимки и заметки рядом с параметрами', onUseForContour, onReturnToMain }: {
-  controller: ReferencePhotosController; active: boolean; disabled?: boolean; hint?: string;
+export function ReferencePhotos({ controller, active, disabled = false, hint = 'Снимки и заметки рядом с параметрами', onUseForContour, onReturnToMain, defaultOpen = false }: {
+  defaultOpen?: boolean; controller: ReferencePhotosController; active: boolean; disabled?: boolean; hint?: string;
   onUseForContour?: (id: string) => Promise<boolean>;
   onReturnToMain?: () => void;
 }) {
@@ -27,7 +27,7 @@ export function ReferencePhotos({ controller, active, disabled = false, hint = '
   const selected = photos.find(photo => photo.id === selectedId), upload = useRef<HTMLInputElement>(null), replace = useRef<HTMLInputElement>(null), fieldsId = useId();
   const open = (id: string, button: HTMLButtonElement) => { opener.current = button; promoting.current = false; setSelectedId(id); setConfirmMain(false); setActualSize(false); popup.onOpenChange(true); };
   return <div className="reference-photos">
-    <details><summary ref={summary}><Images size={20} /><span>Другие ракурсы <small>{hint}</small></span><b>{photos.length}/{MAX_REFERENCE_PHOTOS}</b></summary>
+    <details open={defaultOpen || undefined}><summary ref={summary}><Images size={20} /><span>Другие ракурсы <small>{hint}</small></span><b>{photos.length}/{MAX_REFERENCE_PHOTOS}</b></summary>
       <div className="reference-photos-body"><p>Добавьте вид сбоку, посадку, повреждение или ответную деталь. Снимки общие для обоих способов ввода и сохраняются в проекте. Они помогают осмотру; параметры подтверждаете вы.</p>
         {photos.length > 0 && <ul className="reference-photo-grid">{photos.map((photo, index) => <li key={photo.id}><button type="button" disabled={!active || busy} onClick={event => open(photo.id, event.currentTarget)} aria-label={`Открыть ракурс ${index + 1}: ${photo.source.fileName}`}>
           <img src={photo.image} alt="" /><strong>{referencePhotoRoles[photo.role]}</strong><span>{photo.source.fileName}</span>{photo.note && <small>Есть заметка</small>}

@@ -276,3 +276,27 @@ body{background:#fff;color:#172130}
 .layers-advice{padding-left:18px;margin:8px 0}.layers-account .secondary-button{margin-top:8px}.cloud-projects li{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-top:1px solid #efe6d6}.cloud-projects li span{display:block;color:#627087;font-size:12px}
 .starter-tools{margin:18px 0 6px}.starter-tools .field-label{display:flex;align-items:center;gap:6px}.starter-tools .select-control.native{width:100%;padding:9px;border:1px solid #d9cbb2;border-radius:6px;background:#fff;font-size:14px}.pair-candidates{width:100%;border-collapse:collapse;font-size:13px;margin-top:12px}.pair-candidates th,.pair-candidates td{padding:6px 4px;border-bottom:1px solid #efe6d6;text-align:left}.pair-candidates small{color:#627087}
 .project-backup-banner{display:flex;flex-wrap:wrap;align-items:center;gap:6px 16px;padding:10px 16px;background:#fff7e6;border-top:1px solid #f0dcb4;font-size:13px;color:#6b4c12}.project-backup-banner span{flex:1 1 280px}
+/* v0.28: calm input — optional tools live in pop-ups */
+.tool-tray{margin:22px 0 4px;display:flex;flex-direction:column;gap:8px}
+.tool-tray-label{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:#8a94a3}
+.tool-tray-chips{display:flex;flex-wrap:wrap;gap:8px}
+.tool-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #e3d8c4;background:#fff;border-radius:999px;padding:6px 12px;font-size:13px;color:#4c5a6e;cursor:pointer;transition:border-color .15s,background .15s}
+.tool-chip:hover{border-color:#b98c45;color:#263449}.tool-chip:focus-visible{outline:2px solid #94661f;outline-offset:2px}
+.tool-chip svg{color:#94661f;flex-shrink:0}.tool-chip.active{background:#fbf5ea;border-color:#d7b98a}
+.tool-chip b{font-weight:600;color:#795925;font-size:12px;background:#f3e6cf;border-radius:999px;padding:1px 8px}
+.tool-dialog{max-height:88vh;overflow-y:auto}.tool-panel{display:flex;flex-direction:column;gap:12px}.tool-panel .span-assistant{margin:0}
+.template-list{display:flex;flex-direction:column;gap:8px}.template-item{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;border:1px solid #e7decd;border-radius:8px;background:#fff;padding:10px 12px;cursor:pointer}
+.template-item:hover{border-color:#b98c45}.template-item strong{font-size:14px;color:#263449}.template-item span{font-size:12.5px;color:#627087}
+.context-hints{display:flex;flex-direction:column;gap:8px;margin-top:14px}
+.context-hint{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;border:1px solid #f0d9a8;background:#fffaf0;border-radius:10px;padding:10px 38px 10px 14px;font-size:13.5px;line-height:1.5;color:#5a4516;box-shadow:0 6px 18px -12px rgba(121,89,37,.5);animation:hint-in .25s ease-out}
+.context-hint svg{color:#b27a1c;flex-shrink:0}.context-hint p{margin:0;flex:1 1 220px}.context-hint .secondary-button{padding:6px 12px;min-height:0;font-size:13px}
+.context-hint-close{position:absolute;top:8px;right:8px;border:0;background:none;color:#a08a5c;cursor:pointer;padding:2px}
+@keyframes hint-in{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.context-hint{animation:none}}
+.unit-toggle{display:inline-flex;margin-left:8px;border:1px solid #e3d8c4;border-radius:6px;overflow:hidden;vertical-align:middle}
+.unit-toggle button{border:0;background:#fff;font-size:11px;padding:1px 7px;color:#627087;cursor:pointer}.unit-toggle button[aria-pressed=true]{background:#263449;color:#fff}
+.kind-note{margin-top:6px}
+.project-more{position:relative}.project-more>summary{list-style:none;cursor:pointer;display:inline-flex;align-items:center;gap:6px}.project-more>summary::-webkit-details-marker{display:none}
+.project-more-menu{position:absolute;right:0;top:calc(100% + 6px);z-index:30;display:flex;flex-direction:column;align-items:stretch;min-width:210px;padding:6px;background:#fff;border:1px solid #e3d8c4;border-radius:10px;box-shadow:0 14px 34px -18px rgba(38,52,73,.45)}
+.project-more-menu .text-button{justify-content:flex-start;padding:8px 10px;border-radius:6px;width:100%}.project-more-menu .text-button:hover{background:#f7f1e6}
+.checkout-tray{margin:16px 0 8px}

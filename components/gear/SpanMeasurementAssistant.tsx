@@ -13,9 +13,9 @@ const number = (v: string) => v.trim() === '' ? NaN : Number(v);
 const fmt = (v: number, digits = 6) => (Object.is(Number(v.toFixed(digits)), -0) ? 0 : v)
   .toLocaleString('ru-RU', { maximumFractionDigits: digits });
 
-export function SpanMeasurementAssistant({ draftScope = 'manualSpan', draftIdentity = 'default', teeth, toolTipRadiusCoefficient, facts, seed, application, engaged,
+export function SpanMeasurementAssistant({ defaultOpen = false, draftScope = 'manualSpan', draftIdentity = 'default', teeth, toolTipRadiusCoefficient, facts, seed, application, engaged,
   onDraftChange, onApply, onCancel }: {
-  draftScope?: string; draftIdentity?: string; teeth: number; toolTipRadiusCoefficient: number; facts?: Facts; seed?: SpanAssistantSeed;
+  defaultOpen?: boolean; draftScope?: string; draftIdentity?: string; teeth: number; toolTipRadiusCoefficient: number; facts?: Facts; seed?: SpanAssistantSeed;
   application: SpanApplication | null; engaged: boolean;
   onDraftChange: () => void; onApply: (application: SpanApplication) => void; onCancel: () => void;
 }) {
@@ -39,7 +39,7 @@ export function SpanMeasurementAssistant({ draftScope = 'manualSpan', draftIdent
   const result = useMemo(() => calculated ? analyzeSpanMeasurement(input) : null, [input, calculated]);
   const calculate = () => { setCalculated(true); requestAnimationFrame(() => { resultHeading.current?.focus({ preventScroll: true }); resultHeading.current?.scrollIntoView({ block: 'nearest' }); }); };
   const cancel = () => { onCancel(); setCalculated(false); if (disclosure.current) disclosure.current.open = false; };
-  return <details ref={disclosure} className="span-assistant">
+  return <details ref={disclosure} className="span-assistant" open={defaultOpen || undefined}>
     <summary><Ruler size={20} /><span>Не знаете модуль и смещение?<strong>Измерим зубья</strong></span>{application && <Check size={18} />}</summary>
     <div className="span-assistant-body">
       <p>Для наружного прямозубого эвольвентного колеса можно измерить общую нормаль дважды: по <b>k</b> и по <b>k+1</b> зубьям. Вместе с диаметром вершин это определит модуль, смещение и утонение одного колеса.</p>

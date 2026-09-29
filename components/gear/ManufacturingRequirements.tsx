@@ -14,12 +14,11 @@ export function ManufacturingRequirements({ mesh, draft, setDraft }: { mesh: Mod
   const updateTolerance = (index: number, patch: Partial<ManufacturingDraft['tolerances'][number]>) => setDraft(previous => ({ ...previous,
     tolerances: previous.tolerances.map((row, i) => i === index ? { ...row, ...patch } : row) }));
   const available = dimensions.find(option => !draft.tolerances.some(row => row.dimension === option.id));
-  return <section className="manufacturing-summary" aria-label="Задание мастерской">
-    <h3><ClipboardList size={19} /> Задание мастерской</h3>
-    <p className={`manufacturing-state ${report?.status ?? ''}`} role="status">{report ? manufacturingStatus[report.status] : 'Добавьте материал, количество и требования к готовой детали.'}</p>
-    {report && <p>{report.request.quantity === null ? 'Количество нужно уточнить' : `${report.request.quantity} шт.`} · {report.request.material || 'Материал уточнить'} · Размеров с отклонениями: {report.dimensions.length}</p>}
-    {report?.status === 'needs-review' && <p>Изменились модель, версия приложения или требования. Сверьте карточку перед передачей.</p>}
-    <button className="secondary-button full" onClick={() => { change('enabled', true); setOpen(true); }}><ClipboardList size={17} />{report ? 'Открыть требования' : 'Добавить требования'}</button>
+  // A quiet chip; the card with all fields opens only on demand.
+  const badge = report ? report.status === 'reviewed' ? 'сверены' : report.status === 'needs-review' ? 'сверить' : 'черновик' : null;
+  return <>
+    <button type="button" className={`tool-chip${badge ? ' active' : ''}`} aria-haspopup="dialog" onClick={() => { change('enabled', true); setOpen(true); }}>
+      <ClipboardList size={16} /><span>Требования к детали</span>{badge && <b>{badge}</b>}</button>
     <Dialog open={open} onOpenChange={setOpen}><DialogContent className="engineering-dialog manufacturing-dialog">
       <DialogHeader><div className="dialog-kicker"><ClipboardList size={18} /> ЗАДАНИЕ МАСТЕРСКОЙ</div><DialogTitle>Требования к изготовлению</DialogTitle><DialogDescription>{modelNames[mesh.params.kind]}. Заполните известное; остальное можно согласовать с исполнителем.</DialogDescription></DialogHeader>
       <p>Карточка сохраняется в проекте и его версиях, входит в PDF, паспорт STL и задание печати. Заказ автоматически не отправляется.</p>
@@ -63,5 +62,5 @@ export function ManufacturingRequirements({ mesh, draft, setDraft }: { mesh: Mod
       <div className="manufacturing-actions"><button className="secondary-button" onClick={() => setOpen(false)}>Закрыть</button>
         <button className="primary-button" disabled={!report || !!report.issues.length || report.status === 'reviewed'} onClick={() => setDraft(reviewManufacturing(mesh, draft))}><Check size={17} /> Сверено с этой моделью</button></div>
     </DialogContent></Dialog>
-  </section>;
+  </>;
 }

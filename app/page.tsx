@@ -1,14 +1,17 @@
 "use client";
 import { useEffect, useRef, useState } from 'react';
-import { Camera, Cog, ArrowRight, ArrowLeft, BookOpen, Check, Pencil, Info, FileJson, Grid2X2, ScanLine, SlidersHorizontal, Box, Download } from 'lucide-react';
+import { Camera, Cog, ArrowRight, ArrowLeft, BookOpen, Check, Pencil, Info, FileJson, Grid2X2, ScanLine, SlidersHorizontal, Box, Download, HelpCircle, Ruler, KeyRound, LayoutTemplate, Link2, Images } from 'lucide-react';
 import { Toaster } from 'sonner';
 import { GearViewer } from '@/components/gear/GearViewer';
 import { PhotoWizard } from '@/components/gear/PhotoWizard';
 import { ReferenceDialog } from '@/components/gear/ReferenceDialog';
-import { ParameterEditor } from '@/components/gear/ParameterEditor';
+import { ParameterEditor, BodyFeaturesPanel, FineTuningPanel, bodyFeaturesBadge, bodyFeatureKinds, fineTuningBadge } from '@/components/gear/ParameterEditor';
 import { SpanMeasurementAssistant } from '@/components/gear/SpanMeasurementAssistant';
 import { PinMeasurementTool } from '@/components/gear/PinMeasurementTool';
-import { StarterTools } from '@/components/gear/StarterTools';
+import { TemplatePicker, PairSynthesisPanel } from '@/components/gear/StarterTools';
+import { ToolTray } from '@/components/gear/ToolTray';
+import { ContextHints, contextHints } from '@/components/gear/ContextHints';
+import { MeasurementGuide } from '@/components/gear/MeasurementGuide';
 import { FamilyAssistant } from '@/components/gear/FamilyAssistant';
 import { ModelChips, ModelSummary, ModelInspection } from '@/components/gear/ModelSummary';
 import { CheckoutActions } from '@/components/gear/CheckoutActions';
@@ -106,23 +109,41 @@ function Studio({ project }: { project: ProjectSession }) {
       <section className="journey-input" hidden={!inputActive} aria-label="Исходные данные">
         <div className="input-heading"><button className="inline-link" onClick={() => navigate('start')}><ArrowLeft size={17} /> Сменить способ</button>
           <h1 ref={inputActive ? heading : null} tabIndex={-1}>{state.mode === 'photo' ? 'Восстановим деталь по шагам' : 'Задайте параметры своей детали'}</h1>
-          <p>{state.mode === 'photo' ? 'Сначала снимок, затем только те уточнения, которые нужны для построения.' : 'Начальные значения — редактируемый пример. Замените их данными своей детали и нажмите «Построить модель».'}</p>
+          <p>{state.mode === 'photo' ? 'Сначала снимок, затем только нужные уточнения.' : 'Замените пример данными своей детали.'}</p>
         </div>
         <div className="input-workspace">
           <div className="journey-form">
             <div hidden={state.mode !== 'manual'}>
               {photoHandoffNotice && <p className="family-notice" role="status">{photoHandoffNotice}</p>}
-              <ReferencePhotos controller={referencePhotos} active={inputActive && state.mode === 'manual'} disabled={project.busy} />
-              <StarterTools onApply={params => { send({ type: 'clear-manual-span' }); send({ type: 'clear-manual-family' }); edit(params); }} />
-              <ParameterEditor active={inputActive && state.mode === 'manual'} params={state.manualDraft} onChange={change} onPatch={patch => edit({ ...state.manualDraft, ...patch })} onKind={selectKind}
-                onHand={hand => edit({ ...state.manualDraft, wormHand: hand })} onReset={() => edit(defaultModel(state.manualDraft.kind))} onReference={() => setReference(true)}
-                familyAssistant={<FamilyAssistant active={inputActive && state.mode === 'manual'} source="manual" application={state.manualFamily} engaged={state.manualFamilyPending || !!state.manualFamily}
-                  onDraftChange={() => send({ type: 'edit-manual-family' })} onApply={application => send({ type: 'apply-manual-family', application })} onCancel={() => send({ type: 'clear-manual-family' })} />} />
-              {state.manualDraft.kind === 'spur' && <SpanMeasurementAssistant teeth={state.manualDraft.teeth} toolTipRadiusCoefficient={state.manualDraft.toolTipRadiusCoefficient ?? .3}
-                application={state.manualSpan} engaged={state.manualSpanPending || state.manualSpan !== null}
-                onDraftChange={() => send({ type: 'edit-manual-span' })} onApply={application => send({ type: 'apply-manual-span', application })} onCancel={() => send({ type: 'clear-manual-span' })} />}
-              <PinMeasurementTool params={state.manualDraft} onApplyShift={x => edit({ ...state.manualDraft, profileShift: x, backlash: 0 })} />
-              <div className="manual-build-status" aria-live="polite">{state.manualFamilyPending ? <p>Ответы о типе ещё не применены. Завершите помощник или вернитесь в нём к прямому выбору типа.</p> : state.manualSpanPending ? <p>Измерения ещё не применены. Завершите помощник или выберите в нём прямой ввод параметров.</p> : updating ? <p>Проверяем параметры…</p> : manualCheck.error ? <p className="inline-error" role="alert">{manualCheck.error}</p> : <p><Check size={17} /> Параметры можно использовать для построения.</p>}</div>
+              <ParameterEditor active={inputActive && state.mode === 'manual'} params={state.manualDraft} onChange={change} onKind={selectKind}
+                onHand={hand => edit({ ...state.manualDraft, wormHand: hand })} onReference={() => setReference(true)} />
+              <ContextHints params={state.manualDraft} onPatch={patch => edit({ ...state.manualDraft, ...patch })} />
+              <ToolTray label="Если нужно" tools={[
+                { id: 'family', icon: <HelpCircle size={16} />, label: 'Не знаю тип', title: 'Определим тип по детали', badge: state.manualFamilyPending ? 'не применено' : state.manualFamily ? 'выбран' : null,
+                  render: () => <FamilyAssistant defaultOpen active={inputActive && state.mode === 'manual'} source="manual" application={state.manualFamily} engaged={state.manualFamilyPending || !!state.manualFamily}
+                    onDraftChange={() => send({ type: 'edit-manual-family' })} onApply={application => send({ type: 'apply-manual-family', application })} onCancel={() => send({ type: 'clear-manual-family' })} /> },
+                { id: 'measure', icon: <Ruler size={16} />, label: 'Измерить деталь', title: 'Измерения образца', badge: state.manualSpanPending ? 'не применено' : state.manualSpan ? 'по нормали' : null,
+                  description: 'Схемы измерений, общая нормаль и размер по роликам — если модуль или смещение неизвестны.',
+                  render: () => <div className="tool-panel">
+                    <MeasurementGuide active kind={state.manualDraft.kind} teeth={state.manualDraft.teeth} initialTopic="module" label="Как измерить вашу деталь" hint="Модуль, зубья и размеры тела — на схемах" />
+                    {state.manualDraft.kind === 'spur' && <SpanMeasurementAssistant teeth={state.manualDraft.teeth} toolTipRadiusCoefficient={state.manualDraft.toolTipRadiusCoefficient ?? .3}
+                      application={state.manualSpan} engaged={state.manualSpanPending || state.manualSpan !== null}
+                      onDraftChange={() => send({ type: 'edit-manual-span' })} onApply={application => send({ type: 'apply-manual-span', application })} onCancel={() => send({ type: 'clear-manual-span' })} />}
+                    <PinMeasurementTool params={state.manualDraft} onApplyShift={x => edit({ ...state.manualDraft, profileShift: x, backlash: 0 })} />
+                  </div> },
+                { id: 'body', icon: <KeyRound size={16} />, label: 'Паз и ступица', title: 'Шпоночный паз и ступица', badge: bodyFeaturesBadge(state.manualDraft), hidden: !bodyFeatureKinds.includes(state.manualDraft.kind),
+                  render: () => <BodyFeaturesPanel params={state.manualDraft} onChange={change} onPatch={patch => edit({ ...state.manualDraft, ...patch })} /> },
+                { id: 'template', icon: <LayoutTemplate size={16} />, label: 'Шаблон', title: 'Начать с типовой детали',
+                  render: close => <TemplatePicker onApply={params => { send({ type: 'clear-manual-span' }); send({ type: 'clear-manual-family' }); edit(params); close(); }} /> },
+                { id: 'pair', icon: <Link2 size={16} />, label: 'Подобрать пару', title: 'Шестерня и колесо под ваш редуктор',
+                  description: 'Модули ГОСТ 9563, зубья под передаточное число и смещение под межосевое; каждая пара проверяется расчётом зацепления.',
+                  render: close => <PairSynthesisPanel onApply={params => { send({ type: 'clear-manual-span' }); send({ type: 'clear-manual-family' }); edit(params); close(); }} /> },
+                { id: 'photos', icon: <Images size={16} />, label: 'Фото детали', title: 'Ракурсы образца', badge: referencePhotos.photos.length ? String(referencePhotos.photos.length) : null,
+                  render: () => <ReferencePhotos defaultOpen controller={referencePhotos} active={inputActive && state.mode === 'manual'} disabled={project.busy} /> },
+                { id: 'fine', icon: <SlidersHorizontal size={16} />, label: 'Тонкая настройка', title: 'Тонкая настройка', badge: fineTuningBadge(state.manualDraft),
+                  render: () => <FineTuningPanel params={state.manualDraft} onChange={change} onReset={() => edit(defaultModel(state.manualDraft.kind))} /> },
+              ]} />
+              <div className="manual-build-status" aria-live="polite">{state.manualFamilyPending ? <p>Ответы о типе ещё не применены. Завершите помощник или вернитесь в нём к прямому выбору типа.</p> : state.manualSpanPending ? <p>Измерения ещё не применены. Завершите помощник или выберите в нём прямой ввод параметров.</p> : updating ? <p>Проверяем параметры…</p> : manualCheck.error ? <p className="inline-error" role="alert">{contextHints(state.manualDraft).some(h => h.action) ? 'С этими значениями модель не построить — примените подсказку выше.' : manualCheck.error}</p> : <p><Check size={17} /> Параметры можно использовать для построения.</p>}</div>
               <button className="primary-button full build-model-button" disabled={state.manualFamilyPending || state.manualSpanPending || updating || !!manualCheck.error} onClick={buildManual}>Построить модель <ArrowRight size={20} /></button>
             </div>
             <div hidden={state.mode !== 'photo'}><PhotoWizard referencePhotos={referencePhotos} active={photoActive} onDraftChange={() => send({ type: 'edit-photo' })} onApply={(params, origin, evidence) => send({ type: 'build', params: { ...defaultModel(params.kind), ...params }, origin, evidence, referencePhotos: referencePhotoManifest(referencePhotos.photos) })} onManual={(kind, handoff) => {
@@ -133,11 +154,10 @@ function Studio({ project }: { project: ProjectSession }) {
             {state.error && <p className="inline-error" role="alert">{state.error}</p>}
           </div>
           <aside className="input-help"><span className="help-icon">{state.mode === 'photo' ? <Camera size={24} /> : <Pencil size={24} />}</span>
-            <h2>Это данные вашей детали</h2><p>{state.mode === 'photo' ? 'Фотография помогает увидеть контур. Реальный размер, профиль и недостающие зубья требуют подтверждения.' : 'Модуль, число зубьев и размеры задают геометрию. Если чего-то не знаете, сверьтесь с чертежом или измерьте ответную деталь.'}</p>
-            <p>После построения будет отдельный шаг проверки — до выбора файла или печати.</p>
-            <button className="inline-link" onClick={() => setReference(true)}><BookOpen size={16} /> Открыть справочник</button>
-            <button className="inline-link" onClick={() => chooseInput(state.mode === 'photo' ? 'manual' : 'photo')}>{state.mode === 'photo' ? 'Перейти к ручному вводу' : 'Использовать фото'} <ArrowRight size={16} /></button>
-            {model && <button className="inline-link" onClick={() => navigate('review')}>Вернуться к модели без изменений <ArrowRight size={16} /></button>}
+            <p>{state.mode === 'photo' ? 'Фото подсказывает контур; размеры и число зубьев вы подтверждаете.' : 'Не знаете значение — откройте «Измерить деталь» или справочник.'} Модель вы проверите перед получением файла.</p>
+            <button className="inline-link" onClick={() => setReference(true)}><BookOpen size={16} /> Справочник</button>
+            <button className="inline-link" onClick={() => chooseInput(state.mode === 'photo' ? 'manual' : 'photo')}>{state.mode === 'photo' ? 'Ввести вручную' : 'По фото'} <ArrowRight size={16} /></button>
+            {model && <button className="inline-link" onClick={() => navigate('review')}>Вернуться к модели <ArrowRight size={16} /></button>}
           </aside>
         </div>
       </section>
@@ -153,10 +173,9 @@ function Studio({ project }: { project: ProjectSession }) {
         </section>
         <aside className="delivery-panel journey-next-panel" aria-label={state.stage === 'review' ? 'Проверка перед получением' : 'Получение результата'}>
           {state.stage === 'review' && <><p className="journey-eyebrow">МОДЕЛЬ ПО ВАШИМ ДАННЫМ</p><h2>Похожа на вашу деталь?</h2>
-            <p className="delivery-intro">Поверните модель и сравните основные размеры. Если нужно что-то исправить, вернитесь к исходным данным.</p>
+            <p className="delivery-intro">Поверните модель и сравните с деталью.</p>
             <ol className="review-checks"><li><Check size={19} /><span>Тип, число и направление зубьев</span></li><li><Check size={19} /><span>Модуль, ширина и отверстие или обод</span></li><li><Check size={19} /><span>Допущения и ограничения в разделе геометрии</span></li></ol>
             <button className="primary-button full package-primary" onClick={() => send({ type: 'confirm' })}>Модель верна — продолжить <ArrowRight size={20} /></button>
-            <button className="secondary-button full" onClick={() => navigate('input')}><Pencil size={18} /> Изменить данные</button>
             <p className="delivery-note"><Info size={19} /> Вы подтверждаете размеры и форму. Это не проверка прочности, ресурса или совместимости всей передачи.</p>
           </>}
           {state.stage === 'delivery' && <><h2>Файл или подготовка печати</h2><p className="delivery-intro">Выберите результат для этой модели. На следующем шаге получите файлы или настройки и задание.</p>
