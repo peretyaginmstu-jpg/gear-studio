@@ -29,6 +29,10 @@ import { useReferencePhotos } from '@/components/gear/useReferencePhotos';
 import { ReferencePhotos } from '@/components/gear/ReferencePhotos';
 import { referencePhotoManifest } from '@/lib/referencePhotos';
 import { takeProReturn } from '@/lib/proOffer';
+import { shareUrl } from '@/lib/shareLink';
+import { modelTitle } from '@/lib/layersOrder';
+import { ModuleFromDiameter } from '@/components/gear/QuickSizing';
+import { toast } from 'sonner';
 
 const stages: { stage: JourneyStage; title: string }[] = [
   { stage: 'input', title: 'Исходные данные' }, { stage: 'review', title: 'Проверка модели' },
@@ -54,6 +58,17 @@ function Studio({ project }: { project: ProjectSession }) {
     return true;
   };
   const manualCheck = quickCheck, updating = manualCheck.pending;
+  const share = async () => {
+    const url = shareUrl(state.manualDraft);
+    try {
+      if (navigator.share && window.matchMedia('(pointer: coarse)').matches) { await navigator.share({ title: modelTitle(state.manualDraft), url }); return; }
+      await navigator.clipboard.writeText(url);
+      toast.success('Ссылка скопирована. По ней откроется эта же модель.');
+    } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') return;
+      toast('Скопируйте ссылку вручную', { description: url, duration: 15000 });
+    }
+  };
   useEffect(() => {
     const frame = requestAnimationFrame(() => { heading.current?.focus({ preventScroll: true }); window.scrollTo({ top: 0, behavior: 'instant' }); });
     return () => cancelAnimationFrame(frame);
@@ -97,7 +112,7 @@ function Studio({ project }: { project: ProjectSession }) {
       <span className="top-context">От детали — к своей модели</span>
       <button className="text-button header-reference" onClick={() => setReference(true)}><BookOpen size={20} /> Справочник</button>
     </header>
-    {project.controls}
+    <div className={state.stage === 'start' ? 'project-compact' : undefined}>{project.controls}</div>
     {state.stage !== 'start' && <nav inert={project.busy} className="journey-progress" aria-label="Путь к модели"><ol>{stages.map(({ stage, title }, index) => <li key={stage} aria-current={stage === state.stage ? 'step' : undefined}>
       <button disabled={!canVisit(state, stage)} onClick={() => navigate(stage)}><span>{canVisit(state, stage) && index < stages.findIndex(s => s.stage === state.stage) ? <Check size={15} /> : index + 1}</span>{title}</button>
     </li>)}</ol></nav>}
@@ -117,6 +132,7 @@ function Studio({ project }: { project: ProjectSession }) {
               <QuickNumber label="Ширина, мм" value={state.manualDraft.width} step={1} onChange={v => quickEdit({ ...state.manualDraft, width: v })} />
               {!isRackKind(state.manualDraft.kind) && !isInternalKind(state.manualDraft.kind) && <QuickNumber label="Отверстие, мм" value={state.manualDraft.bore} step={.5} onChange={v => quickEdit({ ...state.manualDraft, bore: v })} />}
             </div>
+            <ModuleFromDiameter params={state.manualDraft} onApply={module => quickEdit({ ...state.manualDraft, module })} />
             <div className="landing-actions">
               <button className="primary-button" disabled={quickCheck.pending || !!quickCheck.error} onClick={() => setDownloadOpen(true)}><Download size={20} /> Скачать модель</button>
               <button className="secondary-button" onClick={() => { chooseInput('manual'); }}><SlidersHorizontal size={18} /> Больше настроек</button>
@@ -124,7 +140,7 @@ function Studio({ project }: { project: ProjectSession }) {
             <button className="inline-link landing-photo" onClick={() => chooseInput('photo')}><Camera size={16} /> Есть только сломанная деталь? Восстановим по фото</button>
             {model && <button className="inline-link resume-model" onClick={() => navigate('review')}>Вернуться к построенной модели <ArrowRight size={16} /></button>}
           </div>
-          <LivePreview params={state.manualDraft} />
+          <LivePreview params={state.manualDraft} onShare={() => void share()} />
         </div>
         <div className="start-capabilities"><span><Cog size={18} /> 10 семейств зацепления</span><span><Box size={18} /> STL бесплатно, без регистрации</span><span><Download size={18} /> DXF и PDF для мастерской</span></div>
         <p className="start-footnote">Расчёты и фото остаются на устройстве. Пригодность рабочей передачи проверяют по нагрузке, материалу и ответной детали.</p>
@@ -226,7 +242,7 @@ function Studio({ project }: { project: ProjectSession }) {
     <footer className="page-footer"><span>ЗАЦЕПЛЕНИЕ <span className="muted">/ инженерная мастерская</span></span><span>Локальные вычисления · Миллиметры · Версия {APP_VERSION}</span></footer>
     <ReferenceDialog open={reference} onOpenChange={setReference} />
     <DownloadSheet open={downloadOpen} onOpenChange={setDownloadOpen} params={state.manualDraft} projectName={project.name}
-      onAccept={acceptDraft} onMore={() => navigate('delivery')} returnToken={proReturn} />
+      onAccept={acceptDraft} onMore={() => navigate('delivery')} onShare={() => void share()} returnToken={proReturn} />
   </div>;
 }
 

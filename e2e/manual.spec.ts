@@ -111,3 +111,24 @@ test('landing: edit the live model and download from the first screen', async ({
   await page.getByRole('button', { name: /Печать, заказ и документы/ }).click();
   await expect(page.getByRole('heading', { name: 'Как получить модель?' })).toBeVisible();
 });
+
+test('landing: module from a measured diameter, then share the model by link', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.goto('./');
+  await page.getByRole('spinbutton', { name: 'Зубьев' }).fill('30');
+  await page.getByRole('button', { name: /Не знаете модуль/ }).click();
+  await page.getByRole('spinbutton', { name: /Наружный диаметр/ }).fill('64.3');
+  await page.getByRole('button', { name: 'Применить модуль 2' }).click();
+  await expect(page.getByRole('spinbutton', { name: 'Модуль, мм' })).toHaveValue('2');
+  await expect(page.locator('.live-preview-size')).toHaveText('⌀ наружный 64 мм · ширина 10 мм');
+  await page.getByRole('spinbutton', { name: 'Ширина, мм' }).fill('14');
+  await page.getByRole('button', { name: 'Поделиться ссылкой на модель' }).click();
+  await expect(page.getByText('Ссылка скопирована')).toBeVisible();
+  const url = await page.evaluate(() => navigator.clipboard.readText());
+  expect(url).toContain('?gear=');
+  await page.goto(url);
+  await expect(page.getByLabel('Название проекта')).toHaveValue(/^По ссылке: /);
+  await expect(page.getByRole('spinbutton', { name: 'Зубьев' })).toHaveValue('30');
+  await expect(page.getByRole('spinbutton', { name: 'Ширина, мм' })).toHaveValue('14');
+  expect(page.url()).not.toContain('gear=');
+});

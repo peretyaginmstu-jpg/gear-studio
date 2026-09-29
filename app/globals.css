@@ -313,6 +313,15 @@ body{background:#fff;color:#172130}
 .landing-photo{margin-top:16px}
 .live-preview{position:relative;border-radius:20px;background:radial-gradient(circle at 50% 40%,#fffaf1,#f1ebdf 70%);min-height:420px;overflow:hidden}
 .live-preview .gear-viewer.compact,.live-preview .gear-viewer.compact .canvas-area{height:100%;min-height:420px;background:transparent;border:0}
+.live-preview-size{position:absolute;left:16px;top:14px;margin:0;background:rgba(255,255,255,.88);border:1px solid #eadfca;border-radius:999px;padding:5px 12px;font-size:13px;font-weight:600;color:#5b4520;font-variant-numeric:tabular-nums}
+.live-preview-share{position:absolute;right:14px;top:12px;display:grid;place-items:center;width:38px;height:38px;border-radius:50%;border:1px solid #eadfca;background:rgba(255,255,255,.9);color:#7a5418}
+.live-preview-share:hover{background:#fff;border-color:#c9a86a}.live-preview-share:focus-visible{outline:2px solid #94661f;outline-offset:2px}
+.quick-sizing-open{margin-top:10px;display:inline-flex;align-items:center;gap:6px;font-size:14px}
+.quick-sizing{margin-top:12px;padding:14px;border:1px dashed #d9c39a;border-radius:12px;background:#fffbf3;display:flex;flex-direction:column;gap:10px;align-items:flex-start}
+.quick-sizing .quick-field{width:100%}.quick-sizing-result p,.quick-sizing-hint{margin:0;font-size:14px;line-height:1.5;color:#46546a}
+.quick-sizing-result{display:flex;flex-direction:column;gap:8px;align-items:flex-start}.quick-sizing-warn{color:#8a5a12!important;font-size:13px!important}
+.download-done-links{display:flex;gap:18px;flex-wrap:wrap;justify-content:center}.download-done-links .text-button{display:inline-flex;align-items:center;gap:6px}
+.landing-photo{display:inline-flex;align-items:flex-start;gap:6px;text-align:left}.landing-photo svg{flex-shrink:0;margin-top:3px}
 .live-preview-note{position:absolute;left:16px;right:16px;bottom:14px;margin:0;background:#fff;border:1px solid #f0d9a8;border-radius:10px;padding:8px 12px;font-size:13px;color:#6b4c12}
 .input-help .live-preview{min-height:300px;margin-bottom:14px}.input-help .live-preview .gear-viewer.compact,.input-help .live-preview .gear-viewer.compact .canvas-area{min-height:300px}
 .manual-actions{display:flex;flex-direction:column;gap:10px}
@@ -336,4 +345,11 @@ body{background:#fff;color:#172130}
   .landing-hero .live-preview{order:-1}
   .landing-actions .primary-button{display:none}
   .mobile-download-bar{display:block;position:sticky;bottom:0;margin:20px -16px 0;padding:12px 16px calc(12px + env(safe-area-inset-bottom));background:rgba(255,255,255,.94);backdrop-filter:blur(8px);border-top:1px solid #efe6d6;z-index:20}
+}
+
+/* v0.29: on a phone's first screen the project bar is one quiet row. */
+@media (max-width:600px){
+  .project-compact .project-bar{padding:8px 16px}.project-compact .project-save-state{display:none}
+  .project-compact .project-bar-main{flex-wrap:nowrap;gap:12px}.project-compact .project-name{flex:1 1 0;min-width:110px;font-size:0}.project-compact .project-name input{font-size:14px}
+  .project-compact .project-tools{flex:none;flex-wrap:nowrap;gap:12px;margin-left:auto}.project-compact .project-tools .text-button{white-space:nowrap}
 }

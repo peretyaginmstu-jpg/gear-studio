@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from 'react';
-import { Download, Check, LoaderCircle, Package, ArrowRight, FileBox, Mail } from 'lucide-react';
+import { Download, Check, LoaderCircle, Package, ArrowRight, FileBox, Mail, Share2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { modelNames, type ModelParams } from '@/lib/model';
 import { prepareModelExport } from '@/lib/modelExport';
@@ -23,9 +23,9 @@ const stem = (p: ModelParams) => `gear-${p.kind}-${p.kind === 'worm' ? `starts${
  * One sheet from «Скачать» to the file: free Standard STL in one click, or the Pro package.
  * Clicking a download is the confirmation of the visible model (onAccept records it in the project).
  */
-export function DownloadSheet({ open, onOpenChange, params, projectName, onAccept, onMore, returnToken = null, layersBase = layersUrl }: {
+export function DownloadSheet({ open, onOpenChange, params, projectName, onAccept, onMore, onShare, returnToken = null, layersBase = layersUrl }: {
   open: boolean; onOpenChange: (open: boolean) => void; params: ModelParams; projectName: string;
-  onAccept: () => boolean; onMore: () => void;
+  onAccept: () => boolean; onMore: () => void; onShare?: () => void;
   /** Purchase the payment page returned with (#pro=…): the sheet opens on its status. */
   returnToken?: string | null; layersBase?: string;
 }) {
@@ -92,7 +92,10 @@ export function DownloadSheet({ open, onOpenChange, params, projectName, onAccep
         <span className="download-done-icon"><Check size={28} /></span>
         <p>{phase.what === 'pro' ? 'Комплект в загрузках: STL, DXF, PDF и паспорт в одном ZIP.' : 'STL в загрузках. Импортируйте его в миллиметрах.'}</p>
         <button type="button" className="primary-button full" onClick={() => { close(false); onMore(); }}>Печать, заказ и документы для мастерской <ArrowRight size={18} /></button>
-        <button type="button" className="text-button" onClick={() => setPhase({ kind: 'choose' })}>Скачать ещё вариант</button>
+        <div className="download-done-links">
+          <button type="button" className="text-button" onClick={() => setPhase({ kind: 'choose' })}>Скачать ещё вариант</button>
+          {onShare && <button type="button" className="text-button" onClick={onShare}><Share2 size={16} /> Поделиться ссылкой</button>}
+        </div>
       </div> : <>
         <div className="download-options">
           <section className="download-card">

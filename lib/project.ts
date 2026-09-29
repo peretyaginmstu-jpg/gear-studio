@@ -30,7 +30,7 @@ const modelKind = z.enum(['spur', 'helical', 'herringbone', 'internal', 'interna
 const mode = z.enum(['manual', 'photo']);
 const source = z.enum(['measurement', 'drawing', 'user_confirmation']);
 const diameterMethod = z.enum(['tip_circle', 'opposed_tips', 'unknown', 'uncorrected_caliper_span']);
-const modelSchema = z.object({
+export const modelParamsSchema = z.object({
   kind: modelKind, teeth: draftNumber, module: draftNumber, width: draftNumber, bore: draftNumber,
   pressureAngleDeg: draftNumber, helixAngleDeg: draftNumber, profileShift: draftNumber, backlash: draftNumber,
   addendumCoefficient: draftNumber.optional(), clearanceCoefficient: draftNumber.optional(),
@@ -119,17 +119,17 @@ const formSchemas: Record<string, z.ZodTypeAny> = { photo: photoForm, photoFamil
   manufacturing: z.object({ draft: manufacturingDraftSchema }).partial().strict(),
   inspections: z.object({ records: sampleInspectionsSchema }).partial().strict(),
   layers: layersFormSchema,
-  pair: z.object({ second: modelSchema, center: text }).partial().strict() };
+  pair: z.object({ second: modelParamsSchema, center: text }).partial().strict() };
 
 const handoff = z.object({ method: z.literal('confirmed-photo-cycloidal-handoff-v1'), selectedPhotoKind: z.literal('spur'), selectedProfile: z.literal('cycloidal'),
   toothCountSeed: z.object({ value: finite.int().min(6).max(250), source }).nullable(), moduleInference: cycloidalInference.nullable(), photoScaleEvidence: z.unknown(),
 }).refine(value => value.moduleInference?.status !== 'ready' || cycloidalPhotoInferenceMatches(value.moduleInference, value.toothCountSeed ?? undefined));
 const savedJourney = z.object({
-  stage: z.enum(['start', 'input', 'review', 'delivery', 'checkout']), mode: mode.nullable(), manualDraft: modelSchema,
+  stage: z.enum(['start', 'input', 'review', 'delivery', 'checkout']), mode: mode.nullable(), manualDraft: modelParamsSchema,
   manualSpan: spanApplication.nullable(), manualSpanPending: z.boolean(), manualFamily: familyApplication.nullable(), manualFamilyPending: z.boolean(),
   manualFamilyMethod: z.enum(['direct-parameters', 'direct-list', 'webmcp']), photoCycloidalHandoff: handoff.nullable(),
   revision: finite.int().nonnegative(),
-  built: z.object({ revision: finite.int().nonnegative(), mode, params: modelSchema, origin: z.string().max(12000), evidence: z.unknown() }).nullable(),
+  built: z.object({ revision: finite.int().nonnegative(), mode, params: modelParamsSchema, origin: z.string().max(12000), evidence: z.unknown() }).nullable(),
 }).strict();
 export type SavedJourney = z.infer<typeof savedJourney>;
 export interface ProjectSnapshot { journey: SavedJourney; forms: ProjectForms }
