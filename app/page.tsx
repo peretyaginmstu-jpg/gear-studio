@@ -28,6 +28,7 @@ import { ProjectWorkspace, type ProjectSession } from '@/components/gear/Project
 import { useReferencePhotos } from '@/components/gear/useReferencePhotos';
 import { ReferencePhotos } from '@/components/gear/ReferencePhotos';
 import { referencePhotoManifest } from '@/lib/referencePhotos';
+import { takeProReturn } from '@/lib/proOffer';
 
 const stages: { stage: JourneyStage; title: string }[] = [
   { stage: 'input', title: 'Исходные данные' }, { stage: 'review', title: 'Проверка модели' },
@@ -42,7 +43,8 @@ export default function Home() {
 function Studio({ project }: { project: ProjectSession }) {
   const { state, send } = useJourney(project.initial, project.onJourney), heading = useRef<HTMLHeadingElement>(null);
   const referencePhotos = useReferencePhotos(() => send({ type: 'edit-reference-photos' }));
-  const [reference, setReference] = useState(false), [downloadOpen, setDownloadOpen] = useState(false);
+  const [reference, setReference] = useState(false), [proReturn] = useState(() => typeof window === 'undefined' ? null : takeProReturn());
+  const [downloadOpen, setDownloadOpen] = useState(!!proReturn);
   const quickEdit = (params: ModelParams) => send({ type: 'quick-edit', params });
   const quickCheck = useModelCheck(state.manualDraft, state.stage === 'start' || (state.mode === 'manual' && state.stage === 'input'));
   // «Скачать» confirms the visible model in place; the sheet needs to know synchronously whether it built.
@@ -224,7 +226,7 @@ function Studio({ project }: { project: ProjectSession }) {
     <footer className="page-footer"><span>ЗАЦЕПЛЕНИЕ <span className="muted">/ инженерная мастерская</span></span><span>Локальные вычисления · Миллиметры · Версия {APP_VERSION}</span></footer>
     <ReferenceDialog open={reference} onOpenChange={setReference} />
     <DownloadSheet open={downloadOpen} onOpenChange={setDownloadOpen} params={state.manualDraft} projectName={project.name}
-      onAccept={acceptDraft} onMore={() => navigate('delivery')} />
+      onAccept={acceptDraft} onMore={() => navigate('delivery')} returnToken={proReturn} />
   </div>;
 }
 

@@ -326,6 +326,9 @@ body{background:#fff;color:#172130}
 .download-card ul{list-style:none;padding:0;margin:0 0 14px;display:flex;flex-direction:column;gap:7px;font-size:13.5px;color:#4c5a6e}
 .download-card li{display:flex;gap:8px;align-items:flex-start}.download-card li svg{color:#2f7a3e;flex-shrink:0;margin-top:2px}
 .download-fine{font-size:12.5px;color:#7a8595;margin:10px 0 0;line-height:1.5}
+.download-email{display:flex;align-items:center;gap:8px;border:1px solid #e0d4bf;border-radius:10px;padding:0 12px;margin-bottom:10px;background:#fff}.download-email svg{color:#94661f;flex-shrink:0}
+.download-email input{flex:1;border:0;outline:0;padding:11px 0;font:inherit;background:transparent;min-width:0}.download-email:focus-within{border-color:#b98a3e;box-shadow:0 0 0 3px rgba(185,138,62,.18)}
+.download-wait{display:flex;align-items:center;gap:10px;justify-content:center;padding:18px 0;color:#4c5a6e}
 .download-done{display:flex;flex-direction:column;align-items:center;text-align:center;gap:12px;padding:10px 0}
 .download-done-icon{display:grid;place-items:center;width:58px;height:58px;border-radius:50%;background:#e8f4ea;color:#2f7a3e;animation:hint-in .3s ease-out}
 @media (max-width:900px){

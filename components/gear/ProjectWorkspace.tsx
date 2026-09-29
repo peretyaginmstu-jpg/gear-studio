@@ -15,6 +15,7 @@ import { LayersAccount } from './LayersAccount';
 import { backupEntry, markBackedUp, shouldRemindBackup, snoozeBackup } from '@/lib/backupReminder';
 import { layersUrl, modelTitle } from '@/lib/layersOrder';
 import { captureReferrer, completeLayersLogin, draftManifest, rememberSyncedRevision } from '@/lib/layersLink';
+import { captureProReturn } from '@/lib/proOffer';
 
 type LoadedProject = { document: ProjectDocument; revision: number | null; restored: boolean; notice?: string; archivedAt?: string | null; focusProject?: boolean };
 export interface ProjectSession { initial: JourneyState | undefined; onJourney: (state: JourneyState) => void; controls: ReactNode; busy: boolean; archived: boolean; name: string }
@@ -28,6 +29,7 @@ export function ProjectWorkspace({ component }: { component: StudioComponent }) 
       let next: LoadedProject;
       captureReferrer();
       const login = completeLayersLogin();
+      captureProReturn();
       const fromLayers = await openLayersDraft();
       if (fromLayers) { if (!cancelled) setLoaded(fromLayers); return; }
       try {
