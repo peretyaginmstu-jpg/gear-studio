@@ -51,7 +51,10 @@ export function GearViewer({ mesh, error, compact = false }: { mesh: ModelMesh |
     const floorDepthMaterial = new THREE.MeshDepthMaterial({ colorWrite: false, depthWrite: false });
     const floor = new THREE.Mesh(floorGeometry, floorMaterial); floor.customDepthMaterial = floorDepthMaterial;
     floor.position.set(centre.x, centre.y, (geometry.boundingBox?.min.z ?? 0) - r * .005); floor.receiveShadow = true; scene.add(floor);
-    const makeControls = () => { const c = new OrbitControls(camera, renderer.domElement); c.enableDamping = true; c.dampingFactor = .075;
+    // Frames are drawn only after something changed: an idle model costs nothing, which matters without a GPU.
+    let dirty = true, visible = true;
+    const invalidate = () => { dirty = true; };
+    const makeControls = () => { const c = new OrbitControls(camera, renderer.domElement); c.enableDamping = true; c.dampingFactor = .075; c.addEventListener('change', invalidate);
       c.minDistance = r * 1.3; c.maxDistance = r * 12; c.target.copy(centre);
       // The landing preview turns slowly until the visitor grabs it.
       if (compactRef.current && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) { c.autoRotate = true; c.autoRotateSpeed = .9; c.addEventListener('start', () => { c.autoRotate = false; }); }
@@ -68,18 +71,25 @@ export function GearViewer({ mesh, error, compact = false }: { mesh: ModelMesh |
     sceneRef.current = { reset, zoom: factor => { camera.position.sub(controls.target).multiplyScalar(factor).add(controls.target); controls.update(); },
       // OrbitControls caches the up-axis, so a new orientation gets fresh controls on the same renderer.
       setView: next => { view = next; controls.dispose(); camera.up.set(0, next === 'top' ? 1 : 0, next === 'top' ? 0 : 1); controls = makeControls(); reset(); },
-      setWireframe: on => { material.wireframe = on; } };
+      setWireframe: on => { material.wireframe = on; invalidate(); } };
     let previousAspect = 0;
     const size = () => {
       if (!mount.clientWidth || !mount.clientHeight) return;
       renderer.setSize(mount.clientWidth, mount.clientHeight); camera.aspect = mount.clientWidth / mount.clientHeight; camera.updateProjectionMatrix();
       if (Math.abs(camera.aspect - previousAspect) > .01) { reset(); previousAspect = camera.aspect; }
+      invalidate();
     };
     const observer = new ResizeObserver(size); observer.observe(mount); size();
+    // An auto-rotating preview scrolled out of view stops drawing until it is back.
+    const seen = new IntersectionObserver(([entry]) => { visible = entry?.isIntersecting ?? true; if (visible) invalidate(); }); seen.observe(mount);
     let frame = 0;
-    const render = () => { controls.update(); renderer.render(scene, camera); frame = requestAnimationFrame(render); }; render();
+    const render = () => {
+      if (visible) controls.update();
+      if (dirty && visible) { dirty = false; renderer.render(scene, camera); }
+      frame = requestAnimationFrame(render);
+    }; render();
     return () => {
-      cancelAnimationFrame(frame); observer.disconnect(); controls.dispose(); geometry.dispose(); material.dispose();
+      cancelAnimationFrame(frame); observer.disconnect(); seen.disconnect(); controls.dispose(); geometry.dispose(); material.dispose();
       floorGeometry.dispose(); floorMaterial.dispose(); floorDepthMaterial.dispose(); light.shadow.map?.dispose(); light.shadow.mapPass?.dispose(); environmentScene.dispose(); env.dispose(); pmrem.dispose(); renderer.dispose(); renderer.domElement.remove(); sceneRef.current = null;
     };
   }, [mesh, flat, webglError]);
