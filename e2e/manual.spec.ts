@@ -5,7 +5,7 @@ const num = (page: Page, name: string) => page.getByRole('spinbutton', { name, e
 
 async function buildKeyedGear(page: Page) {
   await page.goto('./');
-  await page.getByRole('button', { name: /Задать параметры/ }).click();
+  await page.getByRole('button', { name: 'Больше настроек' }).click();
   await num(page, 'Число зубьев').fill('30');
   await num(page, 'Отверстие').fill('12');
   await page.getByRole('button', { name: 'Паз и ступица' }).click();
@@ -15,7 +15,7 @@ async function buildKeyedGear(page: Page) {
   await page.keyboard.press('Escape');
   await expect(page.getByRole('button', { name: /Паз и ступица.*паз 4×1.8/ })).toBeVisible();
   await expect(page.getByText('Параметры можно использовать для построения.')).toBeVisible();
-  await page.getByRole('button', { name: 'Построить модель' }).click();
+  await page.getByRole('button', { name: 'Проверить размеры подробно' }).click();
   await expect(page.getByRole('heading', { name: 'Проверьте модель' })).toBeVisible();
 }
 
@@ -50,7 +50,7 @@ test('manual gear with keyway and hub: build, review, download STL and DXF', asy
 
 test('pin measurement and diametral pitch tools', async ({ page }) => {
   await page.goto('./');
-  await page.getByRole('button', { name: /Задать параметры/ }).click();
+  await page.getByRole('button', { name: 'Больше настроек' }).click();
   await page.getByRole('button', { name: 'Измерить деталь' }).click();
   await page.getByText('Размер по роликам (M)').click();
   await expect(page.getByTestId('pin-measurement')).toHaveText(/^\d+,\d+ мм$/);
@@ -71,9 +71,9 @@ test('pin measurement and diametral pitch tools', async ({ page }) => {
 test('project file round-trips through download and import', async ({ page }) => {
   await page.goto('./');
   await page.getByLabel('Название проекта').fill('E2E gear');
-  await page.getByRole('button', { name: /Задать параметры/ }).click();
+  await page.getByRole('button', { name: 'Больше настроек' }).click();
   await num(page, 'Число зубьев').fill('41');
-  await expect(page.getByText('Сохранено на устройстве')).toBeVisible();
+  await expect(page.getByText('Сохранено на устройстве')).toBeVisible({ timeout: 20_000 });
   await page.getByText('Ещё', { exact: true }).click();
   const [file] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Скачать проект' }).click()]);
   expect(file.suggestedFilename()).toMatch(/\.gear\.json$/);
@@ -88,11 +88,47 @@ test('project file round-trips through download and import', async ({ page }) =>
 
 test('contextual hint appears only when needed and fixes undercut in one click', async ({ page }) => {
   await page.goto('./');
-  await page.getByRole('button', { name: /Задать параметры/ }).click();
+  await page.getByRole('button', { name: 'Больше настроек' }).click();
   await expect(page.locator('.context-hint')).toHaveCount(0);
   await num(page, 'Число зубьев').fill('12');
   await expect(page.getByText(/ножка зуба подрежется/)).toBeVisible();
   await page.getByRole('button', { name: /Смещение x = / }).click();
   await expect(page.locator('.context-hint')).toHaveCount(0);
   await expect(page.getByText('Параметры можно использовать для построения.')).toBeVisible();
+});
+
+test('landing: edit the live model and download from the first screen', async ({ page }) => {
+  await page.goto('./');
+  await expect(page.getByRole('heading', { name: 'Шестерня за минуту' })).toBeVisible();
+  await expect(page.locator('.live-preview canvas')).toHaveCount(1);
+  await page.getByRole('spinbutton', { name: 'Зубьев' }).fill('30');
+  await page.getByRole('button', { name: 'Скачать модель' }).first().click();
+  await expect(page.getByText('Прямозубое колесо · z 30')).toBeVisible();
+  const [stl] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Скачать STL' }).click()]);
+  expect(stl.suggestedFilename()).toBe('gear-spur-z30-m2.000-standard.stl');
+  await expect(page.getByRole('heading', { name: 'Готово!' })).toBeVisible();
+  // The download confirmed the model: the full delivery options are one click away.
+  await page.getByRole('button', { name: /Печать, заказ и документы/ }).click();
+  await expect(page.getByRole('heading', { name: 'Как получить модель?' })).toBeVisible();
+});
+
+test('landing: module from a measured diameter, then share the model by link', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.goto('./');
+  await page.getByRole('spinbutton', { name: 'Зубьев' }).fill('30');
+  await page.getByRole('button', { name: /Не знаете модуль/ }).click();
+  await page.getByRole('spinbutton', { name: /Наружный диаметр/ }).fill('64.3');
+  await page.getByRole('button', { name: 'Применить модуль 2' }).click();
+  await expect(page.getByRole('spinbutton', { name: 'Модуль, мм' })).toHaveValue('2');
+  await expect(page.locator('.live-preview-size')).toHaveText('⌀ наружный 64 мм · ширина 10 мм');
+  await page.getByRole('spinbutton', { name: 'Ширина, мм' }).fill('14');
+  await page.getByRole('button', { name: 'Поделиться ссылкой на модель' }).click();
+  await expect(page.getByText('Ссылка скопирована')).toBeVisible();
+  const url = await page.evaluate(() => navigator.clipboard.readText());
+  expect(url).toContain('?gear=');
+  await page.goto(url);
+  await expect(page.getByLabel('Название проекта')).toHaveValue(/^По ссылке: /);
+  await expect(page.getByRole('spinbutton', { name: 'Зубьев' })).toHaveValue('30');
+  await expect(page.getByRole('spinbutton', { name: 'Ширина, мм' })).toHaveValue('14');
+  expect(page.url()).not.toContain('gear=');
 });

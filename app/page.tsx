@@ -18,13 +18,21 @@ import { CheckoutActions } from '@/components/gear/CheckoutActions';
 import { useGearTool } from '@/components/gear/useGearTool';
 import { useJourney } from '@/components/gear/useJourney';
 import { useModelCheck } from '@/components/gear/useModelCheck';
-import { defaultModel, type ModelParams, type ModelKind } from '@/lib/model';
+import { LivePreview } from '@/components/gear/LivePreview';
+import { DownloadSheet } from '@/components/gear/DownloadSheet';
+import { checkModelParams } from '@/lib/modelCheck';
+import { defaultModel, isInternalKind, isRackKind, modelNames, type ModelParams, type ModelKind } from '@/lib/model';
 import { canVisit, checkoutSnapshot, hasCurrentModel, type JourneyStage, type InputMode } from '@/lib/journey';
 import { APP_VERSION } from '@/lib/appVersion';
 import { ProjectWorkspace, type ProjectSession } from '@/components/gear/ProjectWorkspace';
 import { useReferencePhotos } from '@/components/gear/useReferencePhotos';
 import { ReferencePhotos } from '@/components/gear/ReferencePhotos';
 import { referencePhotoManifest } from '@/lib/referencePhotos';
+import { takeProReturn } from '@/lib/proOffer';
+import { shareUrl } from '@/lib/shareLink';
+import { modelTitle } from '@/lib/layersOrder';
+import { ModuleFromDiameter } from '@/components/gear/QuickSizing';
+import { toast } from 'sonner';
 
 const stages: { stage: JourneyStage; title: string }[] = [
   { stage: 'input', title: 'Исходные данные' }, { stage: 'review', title: 'Проверка модели' },
@@ -39,8 +47,28 @@ export default function Home() {
 function Studio({ project }: { project: ProjectSession }) {
   const { state, send } = useJourney(project.initial, project.onJourney), heading = useRef<HTMLHeadingElement>(null);
   const referencePhotos = useReferencePhotos(() => send({ type: 'edit-reference-photos' }));
-  const [reference, setReference] = useState(false);
-  const manualCheck = useModelCheck(state.manualDraft, state.mode === 'manual' && state.stage === 'input'), updating = manualCheck.pending;
+  const [reference, setReference] = useState(false), [proReturn] = useState(() => typeof window === 'undefined' ? null : takeProReturn());
+  const [downloadOpen, setDownloadOpen] = useState(!!proReturn);
+  const quickEdit = (params: ModelParams) => send({ type: 'quick-edit', params });
+  const quickCheck = useModelCheck(state.manualDraft, state.stage === 'start' || (state.mode === 'manual' && state.stage === 'input'));
+  // «Скачать» confirms the visible model in place; the sheet needs to know synchronously whether it built.
+  const acceptDraft = () => {
+    if (checkModelParams(state.manualDraft)) return false;
+    send({ type: 'accept-model', params: state.manualDraft, origin: 'Параметры заданы вручную', evidence: null, referencePhotos: referencePhotoManifest(referencePhotos.photos) });
+    return true;
+  };
+  const manualCheck = quickCheck, updating = manualCheck.pending;
+  const share = async () => {
+    const url = shareUrl(state.manualDraft);
+    try {
+      if (navigator.share && window.matchMedia('(pointer: coarse)').matches) { await navigator.share({ title: modelTitle(state.manualDraft), url }); return; }
+      await navigator.clipboard.writeText(url);
+      toast.success('Ссылка скопирована. По ней откроется эта же модель.');
+    } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') return;
+      toast('Скопируйте ссылку вручную', { description: url, duration: 15000 });
+    }
+  };
   useEffect(() => {
     const frame = requestAnimationFrame(() => { heading.current?.focus({ preventScroll: true }); window.scrollTo({ top: 0, behavior: 'instant' }); });
     return () => cancelAnimationFrame(frame);
@@ -84,30 +112,44 @@ function Studio({ project }: { project: ProjectSession }) {
       <span className="top-context">От детали — к своей модели</span>
       <button className="text-button header-reference" onClick={() => setReference(true)}><BookOpen size={20} /> Справочник</button>
     </header>
-    {project.controls}
+    <div className={state.stage === 'start' ? 'project-compact' : undefined}>{project.controls}</div>
     {state.stage !== 'start' && <nav inert={project.busy} className="journey-progress" aria-label="Путь к модели"><ol>{stages.map(({ stage, title }, index) => <li key={stage} aria-current={stage === state.stage ? 'step' : undefined}>
       <button disabled={!canVisit(state, stage)} onClick={() => navigate(stage)}><span>{canVisit(state, stage) && index < stages.findIndex(s => s.stage === state.stage) ? <Check size={15} /> : index + 1}</span>{title}</button>
     </li>)}</ol></nav>}
 
     <main inert={project.busy}>
-      {state.stage === 'start' && <section className="journey-start">
-        <p className="journey-eyebrow">ИНЖЕНЕРНАЯ МАСТЕРСКАЯ В БРАУЗЕРЕ</p>
-        <h1 ref={heading} tabIndex={-1}>Восстановите шестерню.<br />Или создайте новую.</h1>
-        <p className="start-intro">Начните с фотографии детали или известных размеров. Мы поможем собрать исходные данные, построить модель и подготовить её к изготовлению.</p>
-        <div className="start-choices">
-          <button className="start-choice" onClick={() => chooseInput('photo')}><span className="start-choice-icon"><Camera size={29} /></span><span><small>У МЕНЯ ЕСТЬ ДЕТАЛЬ</small><strong>Восстановить по фото</strong><span>Загрузите снимок. Помощник подскажет, что измерить и подтвердить.</span></span><ArrowRight size={23} /></button>
-          <button className="start-choice" onClick={() => chooseInput('manual')}><span className="start-choice-icon"><SlidersHorizontal size={29} /></span><span><small>Я ЗНАЮ РАЗМЕРЫ</small><strong>Задать параметры</strong><span>Выберите тип зацепления и введите параметры своей детали.</span></span><ArrowRight size={23} /></button>
+      {state.stage === 'start' && <section className="journey-start landing">
+        <div className="landing-hero">
+          <div className="landing-copy">
+            <p className="journey-eyebrow">ГЕНЕРАТОР ЗУБЧАТЫХ КОЛЁС</p>
+            <h1 ref={heading} tabIndex={-1}>Шестерня за минуту</h1>
+            <p className="start-intro">Меняйте размеры — модель обновляется сразу. Скачайте STL бесплатно или Pro-комплект для изготовления.</p>
+            <div className="quick-form">
+              <label className="quick-field quick-kind">Тип<select value={state.manualDraft.kind} onChange={e => quickEdit(defaultModel(e.target.value as ModelKind))}>
+                {Object.entries(modelNames).map(([kind, title]) => <option key={kind} value={kind}>{title}</option>)}</select></label>
+              {state.manualDraft.kind !== 'worm' && <QuickNumber label="Зубьев" value={state.manualDraft.teeth} step={1} onChange={v => quickEdit({ ...state.manualDraft, teeth: v })} />}
+              <QuickNumber label="Модуль, мм" value={state.manualDraft.module} step={.25} onChange={v => quickEdit({ ...state.manualDraft, module: v })} />
+              <QuickNumber label="Ширина, мм" value={state.manualDraft.width} step={1} onChange={v => quickEdit({ ...state.manualDraft, width: v })} />
+              {!isRackKind(state.manualDraft.kind) && !isInternalKind(state.manualDraft.kind) && <QuickNumber label="Отверстие, мм" value={state.manualDraft.bore} step={.5} onChange={v => quickEdit({ ...state.manualDraft, bore: v })} />}
+            </div>
+            <ModuleFromDiameter params={state.manualDraft} onApply={module => quickEdit({ ...state.manualDraft, module })} />
+            <div className="landing-actions">
+              <button className="primary-button" disabled={quickCheck.pending || !!quickCheck.error} onClick={() => setDownloadOpen(true)}><Download size={20} /> Скачать модель</button>
+              <button className="secondary-button" onClick={() => { chooseInput('manual'); }}><SlidersHorizontal size={18} /> Больше настроек</button>
+            </div>
+            <button className="inline-link landing-photo" onClick={() => chooseInput('photo')}><Camera size={16} /> Есть только сломанная деталь? Восстановим по фото</button>
+            {model && <button className="inline-link resume-model" onClick={() => navigate('review')}>Вернуться к построенной модели <ArrowRight size={16} /></button>}
+          </div>
+          <LivePreview params={state.manualDraft} onShare={() => void share()} />
         </div>
-        {model && <button className="inline-link resume-model" onClick={() => navigate('review')}>Вернуться к построенной модели <ArrowRight size={16} /></button>}
-        {state.mode && !model && <p className="draft-kept">Выберите тот же способ, чтобы продолжить черновик. Статус сохранения — в строке проекта.</p>}
-        <div className="start-steps"><div><span>01</span><h2>Расскажите о детали</h2><p>Фото и измерения или параметры из чертежа.</p></div><div><span>02</span><h2>Проверьте модель</h2><p>Поверните её в 3D, сверьте размеры и ограничения.</p></div><div><span>03</span><h2>Получите результат</h2><p>Скачайте STL с паспортом или подготовьте задание на печать.</p></div></div>
-        <div className="start-capabilities"><span><Cog size={18} /> 10 семейств зацепления</span><span><Box size={18} /> Настоящая 3D-модель</span><span><Download size={18} /> Бесплатный Standard STL</span></div>
+        <div className="start-capabilities"><span><Cog size={18} /> 10 семейств зацепления</span><span><Box size={18} /> STL бесплатно, без регистрации</span><span><Download size={18} /> DXF и PDF для мастерской</span></div>
         <p className="start-footnote">Расчёты и фото остаются на устройстве. Пригодность рабочей передачи проверяют по нагрузке, материалу и ответной детали.</p>
+        <div className="mobile-download-bar"><button className="primary-button full" disabled={quickCheck.pending || !!quickCheck.error} onClick={() => setDownloadOpen(true)}><Download size={20} /> Скачать модель</button></div>
       </section>}
 
       {/* Both input branches stay mounted. Ordinary navigation preserves photo, points and answers. */}
       <section className="journey-input" hidden={!inputActive} aria-label="Исходные данные">
-        <div className="input-heading"><button className="inline-link" onClick={() => navigate('start')}><ArrowLeft size={17} /> Сменить способ</button>
+        <div className="input-heading"><button className="inline-link" onClick={() => navigate('start')}><ArrowLeft size={17} /> На главную</button>
           <h1 ref={inputActive ? heading : null} tabIndex={-1}>{state.mode === 'photo' ? 'Восстановим деталь по шагам' : 'Задайте параметры своей детали'}</h1>
           <p>{state.mode === 'photo' ? 'Сначала снимок, затем только нужные уточнения.' : 'Замените пример данными своей детали.'}</p>
         </div>
@@ -144,7 +186,10 @@ function Studio({ project }: { project: ProjectSession }) {
                   render: () => <FineTuningPanel params={state.manualDraft} onChange={change} onReset={() => edit(defaultModel(state.manualDraft.kind))} /> },
               ]} />
               <div className="manual-build-status" aria-live="polite">{state.manualFamilyPending ? <p>Ответы о типе ещё не применены. Завершите помощник или вернитесь в нём к прямому выбору типа.</p> : state.manualSpanPending ? <p>Измерения ещё не применены. Завершите помощник или выберите в нём прямой ввод параметров.</p> : updating ? <p>Проверяем параметры…</p> : manualCheck.error ? <p className="inline-error" role="alert">{contextHints(state.manualDraft).some(h => h.action) ? 'С этими значениями модель не построить — примените подсказку выше.' : manualCheck.error}</p> : <p><Check size={17} /> Параметры можно использовать для построения.</p>}</div>
-              <button className="primary-button full build-model-button" disabled={state.manualFamilyPending || state.manualSpanPending || updating || !!manualCheck.error} onClick={buildManual}>Построить модель <ArrowRight size={20} /></button>
+              <div className="manual-actions">
+                <button className="primary-button full" disabled={state.manualFamilyPending || state.manualSpanPending || updating || !!manualCheck.error} onClick={() => setDownloadOpen(true)}><Download size={20} /> Скачать модель</button>
+                <button className="secondary-button full build-model-button" disabled={state.manualFamilyPending || state.manualSpanPending || updating || !!manualCheck.error} onClick={buildManual}>Проверить размеры подробно <ArrowRight size={18} /></button>
+              </div>
             </div>
             <div hidden={state.mode !== 'photo'}><PhotoWizard referencePhotos={referencePhotos} active={photoActive} onDraftChange={() => send({ type: 'edit-photo' })} onApply={(params, origin, evidence) => send({ type: 'build', params: { ...defaultModel(params.kind), ...params }, origin, evidence, referencePhotos: referencePhotoManifest(referencePhotos.photos) })} onManual={(kind, handoff) => {
               if (kind === 'cycloidal') send({ type: 'photo-to-manual-cycloidal', ...handoff });
@@ -153,8 +198,9 @@ function Studio({ project }: { project: ProjectSession }) {
               onManualFamily={application => { chooseInput('manual'); send({ type: 'apply-manual-family', application }); }} /></div>
             {state.error && <p className="inline-error" role="alert">{state.error}</p>}
           </div>
-          <aside className="input-help"><span className="help-icon">{state.mode === 'photo' ? <Camera size={24} /> : <Pencil size={24} />}</span>
-            <p>{state.mode === 'photo' ? 'Фото подсказывает контур; размеры и число зубьев вы подтверждаете.' : 'Не знаете значение — откройте «Измерить деталь» или справочник.'} Модель вы проверите перед получением файла.</p>
+          <aside className="input-help">
+            {state.mode === 'manual' ? inputActive && <LivePreview params={state.manualDraft} /> : <span className="help-icon"><Camera size={24} /></span>}
+            <p>{state.mode === 'photo' ? 'Фото подсказывает контур; размеры и число зубьев вы подтверждаете.' : 'Модель обновляется по мере ввода. Не знаете значение — «Измерить деталь» или справочник.'}</p>
             <button className="inline-link" onClick={() => setReference(true)}><BookOpen size={16} /> Справочник</button>
             <button className="inline-link" onClick={() => chooseInput(state.mode === 'photo' ? 'manual' : 'photo')}>{state.mode === 'photo' ? 'Ввести вручную' : 'По фото'} <ArrowRight size={16} /></button>
             {model && <button className="inline-link" onClick={() => navigate('review')}>Вернуться к модели <ArrowRight size={16} /></button>}
@@ -195,5 +241,13 @@ function Studio({ project }: { project: ProjectSession }) {
     </main>
     <footer className="page-footer"><span>ЗАЦЕПЛЕНИЕ <span className="muted">/ инженерная мастерская</span></span><span>Локальные вычисления · Миллиметры · Версия {APP_VERSION}</span></footer>
     <ReferenceDialog open={reference} onOpenChange={setReference} />
+    <DownloadSheet open={downloadOpen} onOpenChange={setDownloadOpen} params={state.manualDraft} projectName={project.name}
+      onAccept={acceptDraft} onMore={() => navigate('delivery')} onShare={() => void share()} returnToken={proReturn} />
   </div>;
+}
+
+/** Landing field: commits on each valid number; an empty box does not wipe the model. */
+function QuickNumber({ label, value, step, onChange }: { label: string; value: number; step: number; onChange: (v: number) => void }) {
+  return <label className="quick-field">{label}<input type="number" inputMode="decimal" aria-label={label} step={step} value={Number.isFinite(value) ? value : ''}
+    onChange={e => { const v = Number(e.target.value); if (e.target.value !== '' && Number.isFinite(v)) onChange(v); }} /></label>;
 }

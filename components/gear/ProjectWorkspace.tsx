@@ -15,6 +15,8 @@ import { LayersAccount } from './LayersAccount';
 import { backupEntry, markBackedUp, shouldRemindBackup, snoozeBackup } from '@/lib/backupReminder';
 import { layersUrl, modelTitle } from '@/lib/layersOrder';
 import { captureReferrer, completeLayersLogin, draftManifest, rememberSyncedRevision } from '@/lib/layersLink';
+import { captureProReturn } from '@/lib/proOffer';
+import { takeSharedModel } from '@/lib/shareLink';
 
 type LoadedProject = { document: ProjectDocument; revision: number | null; restored: boolean; notice?: string; archivedAt?: string | null; focusProject?: boolean };
 export interface ProjectSession { initial: JourneyState | undefined; onJourney: (state: JourneyState) => void; controls: ReactNode; busy: boolean; archived: boolean; name: string }
@@ -28,8 +30,11 @@ export function ProjectWorkspace({ component }: { component: StudioComponent }) 
       let next: LoadedProject;
       captureReferrer();
       const login = completeLayersLogin();
+      captureProReturn();
       const fromLayers = await openLayersDraft();
       if (fromLayers) { if (!cancelled) setLoaded(fromLayers); return; }
+      const shared = await openSharedModel();
+      if (shared) { if (!cancelled) setLoaded(shared); return; }
       try {
         const { activeId } = await listProjects();
         if (activeId) {
@@ -70,6 +75,24 @@ async function openLayersDraft(): Promise<LoadedProject | null> {
   } catch (error) {
     return { document: newProject(), revision: null, restored: false,
       notice: `Не удалось открыть модель из Layers: ${error instanceof Error ? error.message : 'ошибка'}. Текущие проекты не изменены.` };
+  }
+}
+
+/** ?gear=…: a model someone shared opens as its own project on the first screen; other projects stay untouched. */
+async function openSharedModel(): Promise<LoadedProject | null> {
+  const hasLink = new URLSearchParams(window.location.search).has('gear');
+  const params = takeSharedModel();
+  if (!params) return hasLink ? { document: newProject(), revision: null, restored: false, notice: 'Ссылка на модель повреждена или устарела. Открыт пример — задайте размеры сами.' } : null;
+  try {
+    const doc = newProject();
+    doc.journey = { ...doc.journey, stage: 'start', mode: 'manual', manualDraft: params as typeof doc.journey.manualDraft };
+    const checked = parseProject(serializeProject(doc));
+    checked.name = `По ссылке: ${modelTitle(params)}`.slice(0, 120);
+    const revision = await writeProject(checked, null);
+    return { document: checked, revision, restored: true, notice: 'Открыта модель по ссылке — отдельным проектом. Ваши прежние проекты — в «Мои проекты».' };
+  } catch (error) {
+    return { document: newProject(), revision: null, restored: false,
+      notice: `Не удалось открыть модель по ссылке: ${error instanceof Error ? error.message : 'ошибка'}.` };
   }
 }
 

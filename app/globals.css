@@ -300,3 +300,56 @@ body{background:#fff;color:#172130}
 .project-more-menu{position:absolute;right:0;top:calc(100% + 6px);z-index:30;display:flex;flex-direction:column;align-items:stretch;min-width:210px;padding:6px;background:#fff;border:1px solid #e3d8c4;border-radius:10px;box-shadow:0 14px 34px -18px rgba(38,52,73,.45)}
 .project-more-menu .text-button{justify-content:flex-start;padding:8px 10px;border-radius:6px;width:100%}.project-more-menu .text-button:hover{background:#f7f1e6}
 .checkout-tray{margin:16px 0 8px}
+/* v0.29: landing = configurator, one download sheet */
+.landing{max-width:1180px}
+.landing-hero{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);gap:40px;align-items:center;margin-top:8px}
+.landing-copy h1{font-size:clamp(34px,5vw,56px);line-height:1.05;margin:6px 0 14px}
+.quick-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:22px 0 18px}
+.quick-field{display:flex;flex-direction:column;gap:6px;font-size:13px;color:#57687f}
+.quick-field input,.quick-field select{height:46px;border:1px solid #d9cbb2;border-radius:10px;padding:0 12px;font-size:17px;background:#fff;color:#263449;transition:border-color .15s,box-shadow .15s}
+.quick-field input:focus,.quick-field select:focus{outline:none;border-color:#94661f;box-shadow:0 0 0 3px rgba(148,102,31,.15)}
+.quick-kind{grid-column:1/-1}
+.landing-actions{display:flex;flex-wrap:wrap;gap:10px}.landing-actions .primary-button{padding:0 26px;min-height:52px;font-size:17px}
+.landing-photo{margin-top:16px}
+.live-preview{position:relative;border-radius:20px;background:radial-gradient(circle at 50% 40%,#fffaf1,#f1ebdf 70%);min-height:420px;overflow:hidden}
+.live-preview .gear-viewer.compact,.live-preview .gear-viewer.compact .canvas-area{height:100%;min-height:420px;background:transparent;border:0}
+.live-preview-size{position:absolute;left:16px;top:14px;margin:0;background:rgba(255,255,255,.88);border:1px solid #eadfca;border-radius:999px;padding:5px 12px;font-size:13px;font-weight:600;color:#5b4520;font-variant-numeric:tabular-nums}
+.live-preview-share{position:absolute;right:14px;top:12px;display:grid;place-items:center;width:38px;height:38px;border-radius:50%;border:1px solid #eadfca;background:rgba(255,255,255,.9);color:#7a5418}
+.live-preview-share:hover{background:#fff;border-color:#c9a86a}.live-preview-share:focus-visible{outline:2px solid #94661f;outline-offset:2px}
+.quick-sizing-open{margin-top:10px;display:inline-flex;align-items:center;gap:6px;font-size:14px}
+.quick-sizing{margin-top:12px;padding:14px;border:1px dashed #d9c39a;border-radius:12px;background:#fffbf3;display:flex;flex-direction:column;gap:10px;align-items:flex-start}
+.quick-sizing .quick-field{width:100%}.quick-sizing-result p,.quick-sizing-hint{margin:0;font-size:14px;line-height:1.5;color:#46546a}
+.quick-sizing-result{display:flex;flex-direction:column;gap:8px;align-items:flex-start}.quick-sizing-warn{color:#8a5a12!important;font-size:13px!important}
+.download-done-links{display:flex;gap:18px;flex-wrap:wrap;justify-content:center}.download-done-links .text-button{display:inline-flex;align-items:center;gap:6px}
+.landing-photo{display:inline-flex;align-items:flex-start;gap:6px;text-align:left}.landing-photo svg{flex-shrink:0;margin-top:3px}
+.live-preview-note{position:absolute;left:16px;right:16px;bottom:14px;margin:0;background:#fff;border:1px solid #f0d9a8;border-radius:10px;padding:8px 12px;font-size:13px;color:#6b4c12}
+.input-help .live-preview{min-height:300px;margin-bottom:14px}.input-help .live-preview .gear-viewer.compact,.input-help .live-preview .gear-viewer.compact .canvas-area{min-height:300px}
+.manual-actions{display:flex;flex-direction:column;gap:10px}
+.mobile-download-bar{display:none}
+.download-sheet{max-width:560px}
+.download-options{display:flex;flex-direction:column;gap:14px;margin-top:6px}
+.download-card{border:1px solid #e7decd;border-radius:14px;padding:16px;background:#fff}
+.download-card.featured{border-color:#d7b98a;background:linear-gradient(180deg,#fffaf1,#fff);box-shadow:0 12px 30px -22px rgba(121,89,37,.6)}
+.download-card-head{display:flex;align-items:center;gap:12px;margin-bottom:12px}.download-card-head svg{color:#94661f;flex-shrink:0}
+.download-card-head h3{margin:0;font-size:17px}.download-card-head p{margin:2px 0 0;font-size:13px;color:#627087}.download-card-head strong{margin-left:auto;font-size:17px;white-space:nowrap}
+.download-card ul{list-style:none;padding:0;margin:0 0 14px;display:flex;flex-direction:column;gap:7px;font-size:13.5px;color:#4c5a6e}
+.download-card li{display:flex;gap:8px;align-items:flex-start}.download-card li svg{color:#2f7a3e;flex-shrink:0;margin-top:2px}
+.download-fine{font-size:12.5px;color:#7a8595;margin:10px 0 0;line-height:1.5}
+.download-email{display:flex;align-items:center;gap:8px;border:1px solid #e0d4bf;border-radius:10px;padding:0 12px;margin-bottom:10px;background:#fff}.download-email svg{color:#94661f;flex-shrink:0}
+.download-email input{flex:1;border:0;outline:0;padding:11px 0;font:inherit;background:transparent;min-width:0}.download-email:focus-within{border-color:#b98a3e;box-shadow:0 0 0 3px rgba(185,138,62,.18)}
+.download-wait{display:flex;align-items:center;gap:10px;justify-content:center;padding:18px 0;color:#4c5a6e}
+.download-done{display:flex;flex-direction:column;align-items:center;text-align:center;gap:12px;padding:10px 0}
+.download-done-icon{display:grid;place-items:center;width:58px;height:58px;border-radius:50%;background:#e8f4ea;color:#2f7a3e;animation:hint-in .3s ease-out}
+@media (max-width:900px){
+  .landing-hero{grid-template-columns:1fr;gap:20px}.live-preview,.live-preview .gear-viewer.compact,.live-preview .gear-viewer.compact .canvas-area{min-height:300px}
+  .landing-hero .live-preview{order:-1}
+  .landing-actions .primary-button{display:none}
+  .mobile-download-bar{display:block;position:sticky;bottom:0;margin:20px -16px 0;padding:12px 16px calc(12px + env(safe-area-inset-bottom));background:rgba(255,255,255,.94);backdrop-filter:blur(8px);border-top:1px solid #efe6d6;z-index:20}
+}
+
+/* v0.29: on a phone's first screen the project bar is one quiet row. */
+@media (max-width:600px){
+  .project-compact .project-bar{padding:8px 16px}.project-compact .project-save-state{display:none}
+  .project-compact .project-bar-main{flex-wrap:nowrap;gap:12px}.project-compact .project-name{flex:1 1 0;min-width:110px;font-size:0}.project-compact .project-name input{font-size:14px}
+  .project-compact .project-tools{flex:none;flex-wrap:nowrap;gap:12px;margin-left:auto}.project-compact .project-tools .text-button{white-space:nowrap}
+}
