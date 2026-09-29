@@ -12,6 +12,8 @@ export interface ModelDocumentInput {
   passport: string; origin: string; warnings: string[]; notVerified: string[]; nominalRows: DimensionRow[]; volume: number;
   manufacturing: ManufacturingReport | null;
   inspections: SampleInspectionReport[];
+  /** Extra text files for the ZIP, e.g. the DXF profile; listed in manifest.json like the others. */
+  extras?: Record<string, string>;
 }
 export function modelDocumentInput(prepared: ReturnType<typeof prepareModelExport>, filename: string, projectName: string): ModelDocumentInput {
   if (!prepared.validation.valid || prepared.passport.artifact.purpose !== 'STL-export' || !prepared.passport.artifact.preset)

@@ -1,7 +1,7 @@
 import { APP_VERSION } from '../lib/appVersion.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { checkoutSnapshot, initialJourney, journeyFromHash, transitionJourney, type JourneyState } from '../lib/journey.ts';
+import { checkoutSnapshot, hasConfirmedModel, hasCurrentModel, initialJourney, journeyFromHash, transitionJourney, type JourneyState } from '../lib/journey.ts';
 import { defaultModel } from '../lib/model.ts';
 import { prepareModelExport } from '../lib/modelExport.ts';
 import { analyzeSpanMeasurement, selectSpanApplication, type SpanMeasurementInput } from '../lib/spanMeasurement.ts';
@@ -303,4 +303,22 @@ test('photo family, damage and scale evidence share one immutable export snapsho
   evidence.familySelection.decision.answers.direction = 'inclined'; evidence.photoMeasurement.diameterMm = 99;
   assert.equal((passport.evidence as typeof evidence).familySelection.decision.answers.direction, 'straight');
   assert.equal((passport.evidence as typeof evidence).photoMeasurement.diameterMm, 52);
+});
+
+test('landing quick edit switches to the manual draft and stays on the start screen', () => {
+  const start = initialJourney();
+  const edited = transitionJourney(start, { type: 'quick-edit', params: { ...start.manualDraft, teeth: 30 } });
+  assert.equal(edited.stage, 'start'); assert.equal(edited.mode, 'manual'); assert.equal(edited.manualDraft.teeth, 30);
+  assert.equal(transitionJourney(edited, { type: 'quick-edit', params: { ...edited.manualDraft } }), edited);
+});
+
+test('accept-model builds and confirms in place, enabling checkout without review screens', () => {
+  const start = transitionJourney(initialJourney(), { type: 'quick-edit', params: { ...initialJourney().manualDraft, teeth: 28 } });
+  const accepted = transitionJourney(start, { type: 'accept-model', params: start.manualDraft, origin: 'Параметры заданы вручную', evidence: null });
+  assert.equal(accepted.stage, 'start');
+  assert.ok(hasConfirmedModel(accepted)); assert.equal(accepted.built?.params.teeth, 28);
+  const later = transitionJourney(accepted, { type: 'quick-edit', params: { ...accepted.manualDraft, teeth: 29 } });
+  assert.equal(hasCurrentModel(later), false);
+  const broken = transitionJourney(start, { type: 'accept-model', params: { ...start.manualDraft, teeth: 3 }, origin: 'x', evidence: null });
+  assert.equal(broken.built, null); assert.ok(broken.error);
 });

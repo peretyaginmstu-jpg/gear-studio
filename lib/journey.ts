@@ -57,7 +57,11 @@ export type JourneyAction =
   | { type: 'build'; params: ModelParams; origin: string; evidence: unknown; referencePhotos?: ReturnType<typeof referencePhotoManifest> }
   | { type: 'confirm' }
   | { type: 'choose-delivery'; choice: DeliveryChoice }
-  | { type: 'navigate'; stage: JourneyStage };
+  | { type: 'navigate'; stage: JourneyStage }
+  /** Landing configurator: edit the manual draft without leaving the current screen. */
+  | { type: 'quick-edit'; params: ModelParams }
+  /** Fast download: build and confirm the manual draft in place, without the review/delivery screens. */
+  | { type: 'accept-model'; params: ModelParams; origin: string; evidence: unknown; referencePhotos?: ReturnType<typeof referencePhotoManifest> };
 
 export function initialJourney(): JourneyState {
   return { stage: 'start', mode: null, manualDraft: defaultModel(), manualSpan: null, manualSpanPending: false,
@@ -119,6 +123,20 @@ export function transitionJourney(s: JourneyState, action: JourneyAction): Journ
         ...(s.manualDraft.kind !== action.params.kind ? { manualFamily: null, manualFamilyPending: false, manualFamilyMethod: 'direct-parameters' as const } : {}),
         manualSpan: s.manualSpan && spanApplicationMatches(s.manualSpan, action.params) ? s.manualSpan : null,
         manualSpanPending: action.params.kind === 'spur' ? s.manualSpanPending : false };
+    case 'quick-edit': {
+      if (s.mode === 'manual' && sameParams(s.manualDraft, action.params)) return s;
+      const base = s.mode === 'manual' ? s : { ...s, mode: 'manual' as const };
+      const edited = transitionJourney(base, { type: 'edit-manual', params: action.params });
+      return { ...edited, stage: s.stage === 'start' ? 'start' : edited.stage };
+    }
+    case 'accept-model': {
+      if (!['start', 'input'].includes(s.stage) || (s.mode ?? 'manual') !== 'manual') return s;
+      const built = transitionJourney({ ...s, stage: 'input', mode: 'manual' }, { type: 'build', params: action.params, origin: action.origin,
+        evidence: action.evidence, referencePhotos: action.referencePhotos });
+      if (!hasCurrentModel(built)) return { ...s, error: built.error ?? 'Не удалось построить модель.' };
+      // Clicking «Скачать» on the visible model is the user's confirmation; the screen stays where it was.
+      return { ...built, stage: s.stage, confirmedRevision: built.revision, error: null };
+    }
     case 'select-manual-kind':
       if (s.mode !== 'manual') return s;
       return { ...changed(s), manualFamily: null, manualFamilyPending: false, manualFamilyMethod: 'direct-list',
