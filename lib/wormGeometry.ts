@@ -185,9 +185,11 @@ export function buildWormMesh(input: WormParams, quality: MeshQuality = {}): Wor
   const hole = p.bore > 0 ? outer.map(v => {
     const r = Math.hypot(v.x, v.y); return { x: v.x * p.bore / (2 * r), y: v.y * p.bore / (2 * r) };
   }) : null;
-  const count = outer.length, ringSize = count * (hole ? 2 : 1);
-  const vertices = (axialSegments + 1) * ringSize + (hole ? 0 : 2);
-  const triangles = 2 * axialSegments * ringSize + (hole ? 4 * count : 2 * count);
+  const count = outer.length, ringSize = count;
+  // The straight cylindrical bore needs only its two boundary rings. It does
+  // not inherit the thread's axial subdivisions or accumulate its screw twist.
+  const vertices = (axialSegments + 1) * count + (hole ? 2 * count : 2);
+  const triangles = 2 * axialSegments * count + (hole ? 6 * count : 2 * count);
   if (vertices > 250_000 || triangles > 500_000)
     fail('MESH_BUDGET', 'Слишком сложная сетка ZA для браузера. Уменьшите длину, качество или число отсчётов.');
   const positions = new Float32Array(vertices * 3), indices = new Uint32Array(triangles * 3);
@@ -199,27 +201,42 @@ export function buildWormMesh(input: WormParams, quality: MeshQuality = {}): Wor
   for (let k = 0; k <= axialSegments; k++) {
     const t = k / axialSegments, z = (t - 0.5) * p.width, phase = twist * (t - 0.5);
     const co = Math.cos(phase), si = Math.sin(phase);
-    for (const loop of [outer, ...(hole ? [hole] : [])]) {
-      for (const v of loop) vertex(v.x * co - v.y * si, v.x * si + v.y * co, z);
-    }
+    for (const v of outer) vertex(v.x * co - v.y * si, v.x * si + v.y * co, z);
   }
   for (let k = 0; k < axialSegments; k++) {
     const low = k * ringSize, high = (k + 1) * ringSize;
     for (let j = 0; j < count; j++) {
       const next = (j + 1) % count;
       face(low + j, low + next, high + next); face(low + j, high + next, high + j);
-      if (hole) {
-        face(low + count + j, high + count + next, low + count + next);
-        face(low + count + j, high + count + j, high + count + next);
-      }
     }
   }
   const top = axialSegments * ringSize;
   if (hole) {
+    const boreBottom = vi / 3;
+    for (const end of [-1, 1]) {
+      const phase = end * twist / 2, co = Math.cos(phase), si = Math.sin(phase);
+      for (const v of hole) vertex(v.x * co - v.y * si, v.x * si + v.y * co, end * p.width / 2);
+    }
+    const boreTop = boreBottom + count;
     for (let j = 0; j < count; j++) {
       const next = (j + 1) % count;
-      face(top + j, top + next, top + count + next); face(top + j, top + count + next, top + count + j);
-      face(j, count + next, next); face(j, count + j, count + next);
+      face(top + j, top + next, boreTop + next); face(top + j, boreTop + next, boreTop + j);
+      face(j, boreBottom + next, next); face(j, boreBottom + j, boreBottom + next);
+    }
+    // Merge the angular order of the end boundaries. Connecting equal array
+    // indices would wind the bore through every turn and cut across its axis.
+    const ring = (offset: number) => Array.from({ length: count }, (_, j) => {
+      const id = offset + j, angle = Math.atan2(positions[id * 3 + 1], positions[id * 3]);
+      return { id, angle: (angle + TAU) % TAU };
+    }).sort((a, b) => a.angle - b.angle);
+    const lower = ring(boreBottom), upper = ring(boreTop);
+    let i = 0, j = 0;
+    while (i < count || j < count) {
+      const nextLower = i < count ? lower[(i + 1) % count].angle + (i + 1 === count ? TAU : 0) : Infinity;
+      const nextUpper = j < count ? upper[(j + 1) % count].angle + (j + 1 === count ? TAU : 0) : Infinity;
+      const a = lower[i % count].id, b = upper[j % count].id;
+      if (nextLower <= nextUpper) { face(a, b, lower[(++i) % count].id); }
+      else { face(a, b, upper[(++j) % count].id); }
     }
   } else {
     const bottomCentre = vertex(0, 0, -p.width / 2), topCentre = vertex(0, 0, p.width / 2);

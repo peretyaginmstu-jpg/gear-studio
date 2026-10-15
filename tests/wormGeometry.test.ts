@@ -68,7 +68,7 @@ test('screw motion preserves the generating profile; starts, lead and hand have 
       close(wormRadiusAt(input, theta + TAU / starts, z), wormRadiusAt(input, theta, z));
     }
     const mesh = buildWormMesh(input);
-    const ringSize = mesh.profile.outer.length * 2, step = mesh.params.width / mesh.tessellation.axialSegments;
+    const ringSize = mesh.profile.outer.length, step = mesh.params.width / mesh.tessellation.axialSegments;
     const a = Math.atan2(mesh.positions[1], mesh.positions[0]);
     const b = Math.atan2(mesh.positions[ringSize * 3 + 1], mesh.positions[ringSize * 3]);
     const da = Math.atan2(Math.sin(b - a), Math.cos(b - a));
@@ -94,7 +94,7 @@ test('multi-start transverse profile has rotational symmetry and all three radia
 
 test('triangle intersections with the axial plane track the generating trapezoid', () => {
   const input = p({ wormStarts: 1, width: 8, profileTolerance: 0.005 });
-  const mesh = buildWormMesh(input), count = mesh.profile.outer.length, ringSize = count * 2;
+  const mesh = buildWormMesh(input), count = mesh.profile.outer.length, ringSize = count;
   let intersections = 0;
   // Inspect only the actual outer-wall triangles; bore and planar end caps are excluded.
   for (let layer = 0; layer < mesh.tessellation.axialSegments; layer++) for (let j = 0; j < count; j++) {
@@ -191,4 +191,52 @@ test('invalid worm dimensions and unreasonable browser meshes fail with explicit
   for (const value of [NaN, Infinity, -1, 0, 1.5]) assert.throws(() => buildWormMesh(p(), { axialSegments: value }));
   assert.throws(() => buildWormMesh(p(), { flankSamples: 100_000 }), /бюджет/);
   assert.throws(() => wormRadiusAt(p(), Infinity, 0), /конечными/);
+});
+
+test('long six-start ZA exports at Pro density without relaxing the thread or mesh budget', async () => {
+  const { prepareModelExport } = await import('../lib/modelExport.ts');
+  for (const hand of ['right', 'left'] as const) {
+    const input = p({ width: 160, bore: 8, wormStarts: 6, wormHand: hand });
+    const result = prepareModelExport(input, 'pro', { origin: 'Synthetic export regression', evidence: {} });
+    assert.ok(result.validation.valid);
+    assert.ok(result.validation.vertices < 250_000 && result.validation.triangles < 500_000);
+    assert.equal(result.mesh.tessellation.flankSamples, 32);
+    assert.equal(result.passport.parameters.width, 160);
+    assert.equal(result.stl.byteLength, 84 + 50 * result.validation.triangles);
+    // Compare the entire thread surface to the same solid worm: bore meshing
+    // must not alter a single outer-wall vertex or triangle.
+    const solid = buildWormMesh({ ...input, bore: 0 }, { flankSamples: 32 });
+    const outerVertices = (solid.tessellation.axialSegments + 1) * solid.profile.outer.length;
+    const outerIndices = 6 * solid.tessellation.axialSegments * solid.profile.outer.length;
+    assert.deepEqual(result.mesh.positions.slice(0, outerVertices * 3), solid.positions.slice(0, outerVertices * 3));
+    assert.deepEqual(result.mesh.indices.slice(0, outerIndices), solid.indices.slice(0, outerIndices));
+    const removed = validateMesh(solid).signedVolume - result.validation.signedVolume;
+    close(removed, PI * 4 ** 2 * 160, PI * 4 ** 2 * 160 * 0.002);
+  }
+});
+
+test('bore triangles remain near the cylinder and face inward across seam phases and full turns', () => {
+  for (const width of [0.01, 2 * PI, 12.345, 160]) for (const hand of ['right', 'left'] as const) {
+    const mesh = buildWormMesh(p({ width, bore: 8, wormStarts: 6, wormHand: hand }));
+    const count = mesh.profile.outer.length, wallStart = (mesh.tessellation.axialSegments + 1) * count;
+    let checked = 0;
+    for (let i = 0; i < mesh.indices.length; i += 3) {
+      const ids = [...mesh.indices.slice(i, i + 3)];
+      if (!ids.every(id => id >= wallStart)) continue;
+      const v = ids.map(id => Array.from(mesh.positions.slice(id * 3, id * 3 + 3)));
+      const u = v[1].map((x, k) => x - v[0][k]), w = v[2].map((x, k) => x - v[0][k]);
+      const nx = u[1] * w[2] - u[2] * w[1], ny = u[2] * w[0] - u[0] * w[2];
+      const x = (v[0][0] + v[1][0] + v[2][0]) / 3, y = (v[0][1] + v[1][1] + v[2][1]) / 3;
+      assert.ok(nx * x + ny * y < 0, 'bore must face toward its axis');
+      // Corners and interior/edge samples catch diagonal chords crossing the
+      // bore even when the mesh remains closed with a positive total volume.
+      for (const weights of [[1/3,1/3,1/3],[0.5,0.5,0],[0,0.5,0.5],[0.5,0,0.5]]) {
+        const r = Math.hypot(...[0,1].map(k => v.reduce((sum, point, j) => sum + point[k] * weights[j], 0)));
+        close(r, 4, 0.02);
+      }
+      checked++;
+    }
+    assert.equal(checked, count * 2);
+    assert.ok(validateMesh(mesh).valid);
+  }
 });
